@@ -1,0 +1,69 @@
+spring:
+    config:
+        activate:
+            on-profile: dev # 'dev' 프로필일 때 활성화
+
+    # [핵심] 개발 환경에서는 테스트 데이터도 같이 실행!
+    flyway:
+        locations: classpath:db/migration, classpath:db/testdata
+
+    jpa:
+        hibernate:
+            ddl-auto: validate
+        show-sql: true        # 쿼리 보여주기
+        properties:
+            hibernate:
+                format_sql: true  # 쿼리 예쁘게 정렬
+                session_factory.statement_inspector: com.imyme.mine.global.logging.QueryCountInterceptor
+
+    # Dev 환경 카카오 OAuth 설정
+    security:
+        oauth2:
+            client:
+                registration:
+                    kakao:
+                        redirect-uri: ${FRONTEND_URL_DEV}/auth/callback/kakao
+
+    # Dev 환경 Redis 설정
+    # ElastiCache: TLS OFF, ACL 없음 (Private Subnet + SG로 보안 통제)
+    data:
+        redis:
+            host: ${REDIS_HOST}
+            port: ${REDIS_PORT:6379}
+            password: ${REDIS_PASSWORD}
+
+    # Dev 환경 RabbitMQ 설정
+    # Option 1: Docker Compose (간단한 테스트)
+    # Option 2: Amazon MQ (운영 환경 유사 테스트)
+    rabbitmq:
+        host: ${RABBITMQ_HOST:localhost}
+        port: ${RABBITMQ_PORT:5672}
+        username: ${RABBITMQ_USER:admin}
+        password: ${RABBITMQ_PASSWORD:admin}
+        # TLS 미사용 (Private Subnet + SG로 보안 통제)
+        # Amazon MQ 사용 시 amqp:// 프로토콜 (비암호화)
+        connection-timeout: 10000ms
+        listener:
+            simple:
+                acknowledge-mode: manual
+                prefetch: 1  # 동시 처리 메시지 수 제한
+                retry:
+                    enabled: true
+                    initial-interval: 3000ms
+                    max-attempts: 3
+                    multiplier: 2.0
+
+solo:
+    mq:
+        enabled: true  # MQ 경로 활성화 (AI 서버가 solo.stt.request 큐로 전환)
+
+logging:
+    level:
+        com.imyme.mine: DEBUG
+        org.flywaydb: INFO
+        org.springframework.amqp: DEBUG  # RabbitMQ 디버깅
+
+sentry:
+    environment: dev
+    debug: false
+    traces-sample-rate: 1.0

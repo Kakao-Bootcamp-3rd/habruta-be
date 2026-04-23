@@ -1,0 +1,378 @@
+name: Backend CI/CD v2
+
+on:
+  pull_request:
+    branches:
+      - dev
+#      - infra/cicd
+
+  push:
+    branches:
+#      - infra/cicd
+      - dev   # dev merge 결과 → CD
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: backend-cicd-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+
+  # 1) CI
+  ci:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    # Redis 서비스 컨테이너 (테스트용)
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      rabbitmq:
+        image: rabbitmq:3-management
+        ports:
+          - 5672:5672
+          - 15672:15672
+        env:
+          RABBITMQ_DEFAULT_USER: guest
+          RABBITMQ_DEFAULT_PASS: guest
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      # 1. Checkout
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      # 2. JDK 21
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+
+      # 3. Gradle Cache
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      # 4. gradlew 권한
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+
+      # ========================================
+      # 5. 정적 분석 (Static Analysis)
+      # ========================================
+
+      # SpotBugs(버그패턴 캐치) : null위험, 무한 루프 등
+      - name: Run SpotBugs
+        run: ./gradlew spotbugsMain
+
+      # PMD(좋지 않은 코드 습관 캐치) : 중복코드, 안쓰는 변수 등
+      - name: Run PMD
+        run: ./gradlew pmdMain
+
+      # Checkstyle(코드 스타일) : 들여쓰기, 네이밍 규칙, 공백 등
+      - name: Run Checkstyle
+        run: ./gradlew checkstyleMain
+
+      # 6. 빌드
+      - name: Build
+        run: ./gradlew build -x test
+
+       # 7. 테스트
+      - name: Run Tests
+        run: ./gradlew test
+
+      # 8.1 이전 아티팩트 삭제
+      - name: Delete old artifacts
+        if: github.ref == 'refs/heads/dev' || github.event.pull_request.merged == true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const artifacts = await github.rest.actions.listArtifactsForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            for (const artifact of artifacts.data.artifacts) {
+              if (artifact.name === 'backend-dev-latest') {
+                await github.rest.actions.deleteArtifact({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  artifact_id: artifact.id,
+                });
+              }
+            }
+
+      # 8.2 아티팩트 업로드
+      - name: Upload artifact
+        if: github.ref == 'refs/heads/dev' || github.event.pull_request.merged == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-dev-latest
+          path: build/libs/*.jar
+          retention-days: 15
+          overwrite: true
+
+  ci-notify-success:
+    needs: ci
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Discord CI success
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK_BE }}
+          status: success
+          title: "🟢 개발서버 백엔드 CI 성공"
+          content: "<@&${{ secrets.BACKEND_ROLE_ID }}> 개발서버 백엔드 CI 성공!"
+          color: 0x00FF00
+
+  ci-notify-failure:
+    needs: ci
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Discord CI failure
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK_BE }}
+          status: failure
+          title: "🔴 개발서버 백엔드 CI 실패"
+          content: "<@&${{ secrets.BACKEND_ROLE_ID }}> 개발서버 백엔드 CI 실패!"
+          color: 0xFF0000
+
+  # 2) CD
+  cd:
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+
+
+    runs-on: ubuntu-latest
+
+    steps:
+      # 0️⃣ Runner IP 획득 및 보안 그룹 추가
+      - name: Get Runner IP
+        id: ip
+        run: echo "ipv4=$(curl -s https://api.ipify.org)" >> $GITHUB_OUTPUT
+
+      - name: Add IP to Security Group
+        run: |
+          aws ec2 authorize-security-group-ingress \
+            --group-id ${{ secrets.AWS_SECURITY_GROUP_ID }} \
+            --protocol tcp \
+            --port 22 \
+            --cidr "${{ steps.ip.outputs.ipv4 }}/32"
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ap-northeast-2
+
+      # 1️⃣ SSH 세팅
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEV_SERVER_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.DEV_SERVER_HOST }} >> ~/.ssh/known_hosts
+
+      # 2️⃣ 아티팩트 다운로드
+      - name: Download backend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-dev-latest
+          path: ./build/libs
+
+      # 3️⃣ 서버 전송
+      - name: Copy artifact to dev server
+        run: |
+                scp -i ~/.ssh/id_rsa ./build/libs/*.jar \
+                ubuntu@${{ secrets.DEV_SERVER_HOST }}:/home/ubuntu/mine/backend
+
+      # 4️⃣ 배포 (release / current 방식)
+      - name: Deploy to Dev Server
+        run: |
+          ssh -i ~/.ssh/id_rsa ubuntu@${{ secrets.DEV_SERVER_HOST }} 'bash -s' <<'EOF'
+          set -e
+
+          APP_DIR=/home/ubuntu/mine/backend
+          RELEASES_DIR=$APP_DIR/releases
+          SHARED_DIR=$APP_DIR/shared
+          RELEASE_ID=$(date +%Y%m%d%H%M%S)
+
+          CURRENT_LINK=$APP_DIR/current
+          RELEASE_DIR=$RELEASES_DIR/$RELEASE_ID
+          PID_FILE=$SHARED_DIR/backend.pid
+          LOG_DIR=$SHARED_DIR/logs
+          LOG_FILE=$LOG_DIR/backend.log
+          ENV_FILE=$SHARED_DIR/.env
+
+          mkdir -p "$RELEASE_DIR" "$LOG_DIR"
+
+          # 1. 새 release에 jar 이동 - $APP_DIR에서 최신의 jar파일 찾아서 이동 시킴
+          JAR_PATH=$(ls -1t "$APP_DIR"/*.jar | head -n 1)
+          mv "$JAR_PATH" "$RELEASE_DIR/backend.jar"
+
+          # 2. current 심볼릭 링크 교체
+          ln -sfn "$RELEASE_DIR" "$CURRENT_LINK"
+
+          # 3. 기존 프로세스 종료 (pid 기준)
+          if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+            kill "$(cat "$PID_FILE")" || true
+            sleep 2
+          fi
+
+          # env 파일 변수 주입
+          set -a
+          . "$ENV_FILE"
+          set +a
+
+          # nohup 실행 (spring.config.location 제거)
+          nohup java -jar "$CURRENT_LINK/backend.jar" \
+                --spring.profiles.active=dev \
+                >> "$LOG_FILE" 2>&1 </dev/null &
+
+
+          echo $! > "$PID_FILE"
+
+          # 4. Health Check
+          echo "🔍 Health check"
+          for i in {1..10}; do
+            if curl -sf http://127.0.0.1:8080/health > /dev/null; then
+              echo "✅ Health check passed"
+              break
+            fi
+            echo "⏳ Waiting for backend..."
+            sleep 3
+          done
+
+          if ! curl -sf http://127.0.0.1:8080/health > /dev/null; then
+            echo "❌ Health check failed"
+            cat "$LOG_FILE"
+            exit 1
+          fi
+
+          ls -1dt "$RELEASES_DIR"/* | tail -n +4 | xargs -r rm -rf
+
+
+          exit 0
+          EOF
+      # 5️⃣ 배포 후 스모크 테스트
+      - name: Post-deploy Smoke Test
+        run: |
+            set -e
+            # Nginx가 물려있는 엔드포인트로 헬스체크
+            curl -fsS "${{ secrets.DEV_BASE_URL }}/server/health" >/dev/null
+            # 카테고리 리스트업
+            curl -fsS "${{ secrets.DEV_BASE_URL }}/server/categories" >/dev/null
+
+
+      # 5️⃣ 보안 그룹에서 IP 제거 (항상 실행)
+      - name: Remove IP from Security Group
+        if: always()
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id ${{ secrets.AWS_SECURITY_GROUP_ID }} \
+            --protocol tcp \
+            --port 22 \
+            --cidr "${{ steps.ip.outputs.ipv4 }}/32"
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ap-northeast-2
+
+  cd-notify-success:
+    needs: cd
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pick a quote
+        id: quote
+        run: |
+          QUOTES=(
+            "배포 완료! 서버가 새 코드를 품에 안았어 🚀"
+            "릴리스 성공! 사용자들이 곧 새 기능을 만나게 될 거야 🎊"
+            "배포까지 완벽! 오늘 야근은 없다 🎉"
+            "서버 재시작 완료! 헬스체크도 통과, 진짜 장인이야 💚"
+            "코드가 서버에 안착했어. 오늘도 수고했어 🏠"
+            "배포 성공! 이제 커피 한 잔 마실 자격 충분해 ☕"
+            "프로덕션 반영 완료! 팀의 노력이 빛을 발했어 ✨"
+            "배포까지 초록불! 오늘 하루도 완벽하게 마무리 🌟"
+          )
+          IDX=$(( RANDOM % ${#QUOTES[@]} ))
+          echo "msg=${QUOTES[$IDX]}" >> $GITHUB_OUTPUT
+
+      - name: Discord CD success
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK_BE }}
+          status: success
+          title: "🟢 개발서버 백엔드 배포 성공"
+          description: |
+            **브랜치:** `${{ github.ref_name }}`
+            **커밋:** [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
+            **배포자:** `${{ github.actor }}`
+
+            > ${{ steps.quote.outputs.msg }}
+          url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          color: 0x57F287
+          username: "IMYME BE Bot"
+          nocontext: true
+
+  cd-notify-failure:
+    needs: cd
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pick a quote
+        id: quote
+        run: |
+          QUOTES=(
+            "배포 실패... 로그 보면 답 있어! 같이 찾아보자 🔍"
+            "서버가 새 코드를 거부했어. 하지만 반드시 고쳐낸다 💪"
+            "배포 실패! 괜찮아, 롤백은 개발자의 친구야 🔄"
+            "헬스체크 실패? 서버도 쉬고 싶었나봐. 다시 달래보자 🛠️"
+            "빌드는 됐는데 배포에서 막혔어. 조금만 더 파이팅! ⚡"
+            "실패는 더 나은 배포로 가는 디딤돌이야 📈"
+            "배포가 안 됐지만, 원인 파악하면 금방 해결돼 🧩"
+            "오늘의 실패가 내일의 안정적인 배포를 만들어 줄 거야 🌱"
+          )
+          IDX=$(( RANDOM % ${#QUOTES[@]} ))
+          echo "msg=${QUOTES[$IDX]}" >> $GITHUB_OUTPUT
+
+      - name: Discord CD failure
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK_BE }}
+          status: failure
+          title: "🔴 개발서버 백엔드 배포 실패"
+          description: |
+            **브랜치:** `${{ github.ref_name }}`
+            **커밋:** [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
+            **배포자:** `${{ github.actor }}`
+
+            > ${{ steps.quote.outputs.msg }}
+          url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          color: 0xED4245
+          username: "IMYME BE Bot"
+          nocontext: true

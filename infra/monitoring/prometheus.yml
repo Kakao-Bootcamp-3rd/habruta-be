@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Spring Boot Actuator 메트릭 수집
+  - job_name: 'imyme-spring-boot'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8080']  # Docker에서 호스트 머신 접근
+        labels:
+          application: 'imyme-backend'
+          environment: 'local'
+          instance: 'local-mine-01'
+
+  # Prometheus 자체 메트릭 수집
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          application: 'prometheus'

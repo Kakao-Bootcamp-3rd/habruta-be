@@ -1,0 +1,199 @@
+spring:
+    application:
+        name: mine-test
+
+    # JSON 날짜 포맷 설정
+    jackson:
+        serialization:
+            write-dates-as-timestamps: false
+        time-zone: Asia/Seoul
+
+    # H2 DB 설정 (테스트용 인메모리 DB)
+    datasource:
+        url: jdbc:h2:mem:testdb;MODE=PostgreSQL
+        driver-class-name: org.h2.Driver
+        username: sa
+        password:
+
+    jpa:
+        hibernate:
+            ddl-auto: create-drop
+        show-sql: false
+        properties:
+            hibernate:
+                format_sql: true
+                dialect: org.hibernate.dialect.H2Dialect
+        open-in-view: false
+
+    # Flyway 비활성화 (테스트 환경에서는 JPA DDL auto 사용)
+    # - 이유: H2는 PostgreSQL의 CREATE EXTENSION, VECTOR 타입 미지원
+    # - JPA가 Entity 기반으로 테이블 자동 생성 (create-drop)
+    # - 프로덕션: Flyway로 스키마 관리 / 테스트: JPA DDL로 스키마 생성
+    flyway:
+        enabled: false
+
+    # RabbitMQ 설정 (테스트용 - 임베디드 사용 또는 비활성화)
+    # 실제 RabbitMQ가 필요한 통합 테스트에서는 Testcontainers 권장
+    rabbitmq:
+        host: localhost
+        port: 5672
+        username: guest
+        password: guest
+        listener:
+            simple:
+                acknowledge-mode: manual
+                prefetch: 1
+                missing-queues-fatal: false  # 큐 없어도 테스트 실패 방지
+                retry:
+                    enabled: false  # 테스트에서는 재시도 비활성화
+
+    # OAuth 설정 (테스트용 가짜값)
+    security:
+        oauth2:
+            client:
+                registration:
+                    kakao:
+                        client-id: test-client-id
+                        client-secret: test-client-secret
+                        redirect-uri: http://localhost:8080/login/oauth2/code/kakao
+                        authorization-grant-type: authorization_code
+                        client-authentication-method: client_secret_post
+                        scope:
+                            - profile_nickname
+                            - profile_image
+                            - account_email
+                provider:
+                    kakao:
+                        authorization-uri: https://kauth.kakao.com/oauth/authorize
+                        token-uri: https://kauth.kakao.com/oauth/token
+                        user-info-uri: https://kapi.kakao.com/v2/user/me
+                        user-name-attribute: id
+
+# ==================================================
+# AWS S3 설정 (테스트용 가짜값)
+# ==================================================
+cloud:
+    aws:
+        credentials:
+            access-key: test-access-key
+            secret-key: test-secret-key
+        region:
+            static: ap-northeast-2
+        s3:
+            bucket: test-bucket
+
+# ==================================================
+# Redis 설정 (테스트용 - GitHub Actions 서비스 컨테이너)
+# ==================================================
+    data:
+        redis:
+            host: localhost
+            port: 6379
+            password:
+            lettuce:
+                pool:
+                    max-active: 10
+                    max-idle: 5
+                    min-idle: 2
+                    max-wait: 3000ms
+            timeout: 3000ms
+
+# ==================================================
+# AI 서버 설정 (테스트용 가짜값)
+# ==================================================
+ai-server:
+    base-url: http://localhost:9999
+    secret: test-ai-server-secret
+    timeout-seconds: 30
+    warmup-cooldown-seconds: 30
+
+# ==================================================
+# Knowledge 배치 작업 설정 (테스트에서는 비활성화)
+# ==================================================
+solo:
+    mq:
+        enabled: false
+        exchange: solo.direct
+        queue:
+            stt-response: solo.stt.response
+            feedback-response: solo.feedback.response
+        routing:
+            stt-request: solo.stt.request
+            feedback-request: solo.feedback.request
+
+knowledge:
+    batch:
+        enabled: false
+        batch-size: 50
+        keyword-delay-ms: 1000
+        batch-delay-ms: 2000
+        enabled-keywords: []
+        max-similar-count: 5
+        similarity-threshold: 0.7
+
+# ==================================================
+# JWT 설정 (테스트용)
+# ==================================================
+jwt:
+    secret: dGVzdF9zZWNyZXRfa2V5X2Zvcl90ZXN0aW5nX3B1cnBvc2VzX29ubHlfbXVzdF9iZV9sb25nX2Vub3VnaF90ZXN0X3NlY3JldF9rZXk=
+    access-token-expiration: 3600000    # 1시간
+    refresh-token-expiration: 604800000 # 7일
+
+# ==================================================
+# CORS 설정 (테스트용)
+# ==================================================
+cors:
+    allowed-origins: http://localhost:3000,http://localhost:8080
+
+# ==================================================
+# Swagger 설정 (테스트용)
+# ==================================================
+swagger:
+    dev-server-url: http://localhost:8080
+
+# ==================================================
+# OAuth Kakao 동적 Redirect URI 설정 (테스트용)
+# ==================================================
+oauth:
+    kakao:
+        redirect-uris:
+            local: http://localhost:3000/auth/callback/kakao
+            dev: http://localhost:3000/auth/callback/kakao
+            prod: http://localhost:3000/auth/callback/kakao
+        origins:
+            local: http://localhost:3000
+            dev: http://localhost:3000
+            prod: http://localhost:3000
+
+# ==================================================
+# Attempt/Profile 설정 (테스트용)
+# ==================================================
+attempt:
+    upload-expiration-minutes: 10
+    presigned-url-expiration-hours: 1
+
+profile-image:
+    presigned-url-expiration-minutes: 5
+    get-url-expiration-hours: 1
+
+# ==================================================
+# Sentry 설정 (테스트용 더미값)
+# ==================================================
+sentry:
+    dsn: https://test@test.ingest.sentry.io/1234567
+    environment: test
+    traces-sample-rate: 0.0
+    send-default-pii: false
+    logging:
+        minimum-event-level: error
+        minimum-breadcrumb-level: info
+
+# ==================================================
+# 로그 설정 (테스트용 - 간소화)
+# ==================================================
+logging:
+    level:
+        com.imyme.mine: INFO
+        org.springframework.security: WARN
+        org.hibernate.SQL: WARN
+        org.springframework.test: INFO

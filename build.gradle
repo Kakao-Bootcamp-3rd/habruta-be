@@ -1,0 +1,147 @@
+import com.github.spotbugs.snom.Effort
+import com.github.spotbugs.snom.Confidence
+
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.4.12'
+    id 'io.spring.dependency-management' version '1.1.7'
+    id 'com.github.spotbugs' version '6.0.7'
+    id 'pmd'
+    id 'checkstyle'
+}
+
+group = 'com.imyme'
+version = '0.0.1-SNAPSHOT'
+description = 'Demo project for Spring Boot'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-websocket'
+
+    runtimeOnly 'org.postgresql:postgresql'
+
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    testCompileOnly 'org.projectlombok:lombok'
+    testAnnotationProcessor 'org.projectlombok:lombok'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    // Redis
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+    implementation 'org.springframework.boot:spring-boot-starter-cache'
+
+    // RabbitMQ
+    implementation 'org.springframework.boot:spring-boot-starter-amqp'
+
+    // JWT
+    implementation 'io.jsonwebtoken:jjwt-api:0.12.3'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.3'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.3'
+
+    // Swagger/OpenAPI
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.3'
+
+    // AWS S3
+    implementation platform('software.amazon.awssdk:bom:2.25.27')
+    implementation 'software.amazon.awssdk:s3'
+
+    testImplementation 'com.h2database:h2'
+
+    // Testcontainers
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:postgresql'
+    // org.testcontainers:redis 미추가 — GenericContainer로 처리
+
+    // Flyway (DB 마이그레이션 도구)
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+
+    // JSONB 처리를 위한 라이브러리 (선택사항이지만 추천)
+    implementation 'io.hypersistence:hypersistence-utils-hibernate-63:3.7.3'
+
+    // JSON 로깅 (Loki 연동)
+    implementation 'net.logstash.logback:logstash-logback-encoder:8.0'
+
+    // Prometheus 메트릭 수집
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+
+    // Sentry (에러 추적 & 성능 모니터링) - Jakarta Starter
+    implementation 'io.sentry:sentry-spring-boot-starter-jakarta:8.1.0'
+    implementation 'io.sentry:sentry-logback:8.1.0'
+
+    // Firebase Admin SDK (FCM 푸시 알림)
+    implementation 'com.google.firebase:firebase-admin:9.4.2'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+// Spotbugs
+spotbugs {
+    toolVersion = '4.8.3'
+    effort = Effort.valueOf('MAX')
+    reportLevel = Confidence.valueOf('LOW')
+    ignoreFailures = true  // MVP 단계에서는 경고만
+}
+
+spotbugsMain {
+    reports {
+        html.required = true
+        xml.required = false
+    }
+}
+
+// PMD - 정적 코드 분석
+pmd {
+    toolVersion = '6.55.0'
+    ruleSets = []
+    ruleSetFiles = files("config/pmd/pmd-rules.xml")
+    ignoreFailures = true  // 경고만
+}
+
+pmdMain {
+    reports {
+        html.required = true
+        xml.required = false
+    }
+}
+
+// CheckStyle - 코드 스타일 검사
+checkstyle {
+    toolVersion = '10.12.3'
+    configFile = file("config/checkstyle/checkstyle.xml")
+    ignoreFailures = true  // 경고만
+}
+
+checkstyleMain {
+    reports {
+        html.required = true
+        xml.required = false
+    }
+}

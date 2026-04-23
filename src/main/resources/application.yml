@@ -1,0 +1,250 @@
+spring:
+    config:
+        # .env 파일을 불러오는 설정 (로컬 개발 시 유용)
+        import: optional:file:.env[.yaml]
+
+    application:
+        name: mine
+
+    # JSON 날짜 포맷 설정
+    jackson:
+        serialization:
+            write-dates-as-timestamps: false
+        time-zone: Asia/Seoul
+
+    # 파일 업로드 용량 설정
+    servlet:
+        multipart:
+            max-file-size: 20MB
+            max-request-size: 20MB
+
+
+    mvc:
+        throw-exception-if-no-handler-found: true
+        pathmatch:
+            matching-strategy: ant_path_matcher
+    web:
+        resources:
+            add-mappings: false
+
+    # ==================================================
+    # DB / JPA 공통 (구체적 설정은 프로필별로 다를 수 있음)
+    # ==================================================
+    datasource:
+        url: ${DB_URL}
+        username: ${DB_USERNAME}
+        password: ${DB_PASSWORD}
+        driver-class-name: org.postgresql.Driver
+
+    flyway:
+        enabled: true
+        baseline-on-migrate: true
+        validate-on-migrate: false # 마이그레이션 검증 비활성화
+        locations: classpath:db/migration # 기본값
+
+    # ==================================================
+    # Redis 공통
+    # ==================================================
+    data:
+        redis:
+            host: ${REDIS_HOST:localhost}
+            port: ${REDIS_PORT:6379}
+            password: ${REDIS_PASSWORD:}
+            lettuce:
+                pool:
+                    max-active: 10
+                    max-idle: 5
+                    min-idle: 2
+                    max-wait: 3000ms
+            timeout: 3000ms
+
+    # ==================================================
+    # RabbitMQ 공통
+    # ==================================================
+    rabbitmq:
+        host: ${RABBITMQ_HOST:localhost}
+        port: ${RABBITMQ_PORT:5672}
+        username: ${RABBITMQ_USER:admin}
+        password: ${RABBITMQ_PASSWORD:admin}
+        listener:
+            simple:
+                acknowledge-mode: manual  # Manual Ack (수동 확인)
+                prefetch: 1               # QoS - 동시 처리 메시지 수 제한
+                missing-queues-fatal: false  # AI 서버가 큐 생성 담당, 큐 없어도 부팅 가능
+                retry:
+                    enabled: true
+                    initial-interval: 3000ms
+                    max-attempts: 3
+                    multiplier: 2.0
+
+    # ==================================================
+    # Security / OAuth2 공통
+    # ==================================================
+    security:
+        oauth2:
+            client:
+                registration:
+                    kakao:
+                        client-id: ${KAKAO_CLIENT_ID}
+                        client-secret: ${KAKAO_CLIENT_SECRET}
+                        redirect-uri: ${FRONTEND_URL_LOCAL}/auth/callback/kakao  # Local 기본값
+                        authorization-grant-type: authorization_code
+                        client-authentication-method: client_secret_post
+                        scope:
+                            - profile_nickname
+                            - profile_image
+                            - account_email
+                provider:
+                    kakao:
+                        authorization-uri: https://kauth.kakao.com/oauth/authorize
+                        token-uri: https://kauth.kakao.com/oauth/token
+                        user-info-uri: https://kapi.kakao.com/v2/user/me
+                        user-name-attribute: id
+
+# ==================================================
+# AWS / AI / JWT / Swagger 공통 변수 매핑
+# ==================================================
+cloud:
+    aws:
+        credentials:
+            access-key: ${S3_ACCESS_KEY}
+            secret-key: ${S3_SECRET_KEY}
+        region:
+            static: ${AWS_REGION}
+        s3:
+            bucket: ${BUCKET_NAME}
+
+ai-server:
+    base-url: ${AI_SERVER_URL}
+    secret: ${AI_SERVER_SECRET}
+    timeout-seconds: 30
+    warmup-cooldown-seconds: 35
+
+jwt:
+    secret: ${JWT_SECRET}
+    access-token-expiration: 3600000    # 1시간
+    refresh-token-expiration: 604800000 # 7일
+
+cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS}
+
+swagger:
+    dev-server-url: ${BACKEND_URL_DEV}
+
+# ==================================================
+# OAuth Kakao 동적 Redirect URI 설정
+# ==================================================
+oauth:
+    kakao:
+        redirect-uris:
+            local: ${FRONTEND_URL_LOCAL}/auth/callback/kakao
+            dev: ${FRONTEND_URL_DEV}/auth/callback/kakao
+            prod: ${FRONTEND_URL_PROD}/auth/callback/kakao
+        origins:
+            local: ${FRONTEND_URL_LOCAL}
+            dev: ${FRONTEND_URL_DEV}
+            prod: ${FRONTEND_URL_PROD}
+
+# ==================================================
+# 비즈니스 로직 설정 (Attempt, Profile, Knowledge)
+# ==================================================
+attempt:
+    upload-expiration-minutes: 10
+    presigned-url-expiration-hours: 1
+
+profile-image:
+    presigned-url-expiration-minutes: 5
+    get-url-expiration-hours: 1
+
+solo:
+    mq:
+        enabled: false  # true: MQ 경로, false: 기존 HTTP 폴링 경로
+        exchange: solo.direct
+        queue:
+            stt-response: solo.stt.response
+            feedback-response: solo.feedback.response
+        routing:
+            stt-request: solo.stt.request
+            feedback-request: solo.feedback.request
+
+challenge:
+    mq:
+        exchange: challenge.direct
+        queue:
+            feedback-response: challenge.feedback.response
+            pairs-eval: challenge.pairs.eval
+            ranking-completed: challenge.ranking.completed
+        routing:
+            feedback-request: challenge.feedback.request
+
+knowledge:
+    batch:
+        enabled: false # 기본은 꺼둠 (Prod나 별도 Worker에서만 켜는 것을 권장)
+        batch-size: 50
+        keyword-delay-ms: 1000
+        batch-delay-ms: 2000
+        enabled-keywords: []
+        max-similar-count: 5
+        similarity-threshold: 0.7
+        idle-sleep-ms: 120000
+
+# ==================================================
+# Actuator / Swagger UI
+# ==================================================
+server:
+    port: 8080
+    servlet:
+        encoding:
+            charset: UTF-8
+            force: true
+
+springdoc:
+    swagger-ui:
+        path: /swagger-ui.html
+        tags-sorter: alpha
+        groups-order: DESC
+        operations-sorter: method
+        disable-swagger-default-url: true
+        display-request-duration: true
+    api-docs:
+        path: /v3/api-docs
+    show-actuator: true
+    default-consumes-media-type: application/json
+    default-produces-media-type: application/json
+
+management:
+    endpoints:
+        web:
+            exposure:
+                include: health,info,prometheus,metrics
+        base-path: /actuator
+    endpoint:
+        health:
+            show-details: always
+        prometheus:
+            enabled: true
+    metrics:
+        export:
+            prometheus:
+                enabled: true
+        distribution:
+            percentiles-histogram:
+                http.server.requests: true
+        tags:
+            application: ${spring.application.name}
+
+# ==================================================
+# Sentry (에러 추적 & 성능 모니터링)
+# ==================================================
+firebase:
+    service-account-key: ${FIREBASE_SERVICE_ACCOUNT_KEY:}
+
+sentry:
+    dsn: ${SENTRY_DSN}
+    environment: local
+    traces-sample-rate: 1.0  # 테스트용 100% 샘플링
+    send-default-pii: false
+    debug: false
+    logging:
+        minimum-event-level: error
+        minimum-breadcrumb-level: info

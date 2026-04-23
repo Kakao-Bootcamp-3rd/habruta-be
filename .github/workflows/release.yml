@@ -1,0 +1,292 @@
+name: Backend CI/CD release mvp2
+
+on:
+  pull_request:
+    branches:
+      - release
+#      - infra/cicd
+
+  push:
+    branches:
+#      - infra/cicd
+      - release
+      # - dev   # dev merge 결과 → CD
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-cicd-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+
+  # 1) CI
+  ci:
+    if: github.event_name == 'pull_request' || github.event_name == 'push' # pr 및 push 일때만 실행
+    runs-on: ubuntu-latest # 워크플로우 실행 러너 지정
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      rabbitmq:
+        image: rabbitmq:3-management
+        ports:
+          - 5672:5672
+          - 15672:15672
+        env:
+          RABBITMQ_DEFAULT_USER: guest
+          RABBITMQ_DEFAULT_PASS: guest
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      # 1. Checkout
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21 (with Gradle cache)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      # ========================================
+      # 5. 정적 분석 (Static Analysis)
+      # ========================================
+
+      # SpotBugs(버그패턴 캐치) : null위험, 무한 루프 등
+      - name: Run SpotBugs
+        run: ./gradlew spotbugsMain
+
+      # PMD(좋지 않은 코드 습관 캐치) : 중복코드, 안쓰는 변수 등
+      - name: Run PMD
+        run: ./gradlew pmdMain
+
+      # Checkstyle(코드 스타일) : 들여쓰기, 네이밍 규칙, 공백 등
+      - name: Run Checkstyle
+        run: ./gradlew checkstyleMain
+
+      # 7. 테스트 + 빌드
+      - name: Build and Test
+        run: ./gradlew build
+        env:
+          SPRING_PROFILES_ACTIVE: test
+          SPRING_REDIS_HOST: localhost
+          SPRING_REDIS_PORT: 6379
+
+      # 8. JAR artifact 업로드 (CD에서 재사용)
+      - name: Upload JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-jar
+          path: build/libs/*.jar
+          retention-days: 1
+
+
+  ci-notify-success:
+    needs: ci
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Discord CI success
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK_BE }}
+          status: success
+          title: "🟢 릴리즈서버 백엔드 CI 성공"
+          content: "<@&${{ secrets.BACKEND_ROLE_ID }}> 릴리즈서버 백엔드 CI 성공!"
+          color: 0x00FF00
+
+  ci-notify-failure:
+    needs: ci
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Discord CI failure
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK_BE }}
+          status: failure
+          title: "🔴 릴리즈서버 백엔드 CI 실패"
+          content: "<@&${{ secrets.BACKEND_ROLE_ID }}> 릴리즈서버 백엔드 CI 실패!"
+          color: 0xFF0000
+
+  # 2) CD
+  cd:
+    needs: ci
+    # if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/release'
+
+
+    runs-on: ubuntu-latest
+
+    # test ec2 public ip : 15.164.94.102
+    steps:
+      # CD에서도 Dockerfile/배포 리소스를 사용하므로 소스 체크아웃
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # CI에서 빌드한 JAR 다운로드
+      - name: Download JAR artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-jar
+          path: build/libs
+
+      # AWS API 호출(ECR push, ECS update)을 위한 자격 증명 설정
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-northeast-2
+
+      # ECR 로그인 후 docker push 가능 상태로 전환
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Buildx 사용 + GHA 캐시로 이미지 빌드 속도 개선
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 커밋 SHA 태그로 이미지를 빌드/푸시 (불변 태그 전략)
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          platforms: linux/arm64
+          tags: |
+            219268921033.dkr.ecr.ap-northeast-2.amazonaws.com/imyme-backend:${{ github.sha }}
+            219268921033.dkr.ecr.ap-northeast-2.amazonaws.com/imyme-backend:release-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ASG 인스턴스 대상 SSM 배포 (docker compose)
+      - name: Deploy with SSM (docker compose)
+        run: |
+          set -euo pipefail
+
+          IMAGE_URI="219268921033.dkr.ecr.ap-northeast-2.amazonaws.com/imyme-backend:release-latest"
+
+          cat > /tmp/ssm-params.json << 'ENDJSON'
+          {
+            "commands": [
+              "set -eu",
+              "cd /home/ubuntu",
+              "aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 219268921033.dkr.ecr.ap-northeast-2.amazonaws.com",
+              "> /home/ubuntu/.env",
+              "echo '# ------------- COMMON --------------' >> /home/ubuntu/.env",
+              "aws ssm get-parameters-by-path --path '/MINE/MVP1/BE/ENV/COMMON' --with-decryption --query 'Parameters[*].[Name,Value]' --output text --region ap-northeast-2 | while IFS=$(printf '\\t') read -r name value; do key=$(basename \"$name\"); echo \"$key=${value:-}\" >> /home/ubuntu/.env; done",
+              "echo '' >> /home/ubuntu/.env",
+              "echo '# ------------- RELEASE --------------' >> /home/ubuntu/.env",
+              "aws ssm get-parameters-by-path --path '/MINE/MVP1/BE/ENV/RELEASE' --with-decryption --query 'Parameters[*].[Name,Value]' --output text --region ap-northeast-2 | while IFS=$(printf '\\t') read -r name value; do key=$(basename \"$name\"); echo \"$key=${value:-}\" >> /home/ubuntu/.env; done",
+              "IMAGE_URI=219268921033.dkr.ecr.ap-northeast-2.amazonaws.com/imyme-backend:release-latest",
+              "docker pull $IMAGE_URI",
+              "docker compose up -d",
+              "docker image prune -f"
+            ]
+          }
+          ENDJSON
+
+          COMMAND_ID=$(aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=tag:aws:autoscaling:groupName,Values=mine_mvp1_be_asg" \
+            --comment "backend release deploy (${GITHUB_SHA})" \
+            --parameters file:///tmp/ssm-params.json \
+            --region ap-northeast-2 \
+            --query "Command.CommandId" \
+            --output text)
+
+          echo "SSM Command ID: ${COMMAND_ID}"
+
+          for i in {1..60}; do
+            STATUS=$(aws ssm list-commands \
+              --command-id "${COMMAND_ID}" \
+              --region ap-northeast-2 \
+              --query "Commands[0].Status" \
+              --output text)
+            echo "SSM status: ${STATUS}"
+
+            if [ "${STATUS}" = "Success" ]; then
+              break
+            fi
+
+            if [ "${STATUS}" = "Failed" ] || [ "${STATUS}" = "Cancelled" ] || [ "${STATUS}" = "TimedOut" ] || [ "${STATUS}" = "Cancelling" ]; then
+              aws ssm list-command-invocations \
+                --command-id "${COMMAND_ID}" \
+                --details \
+                --region ap-northeast-2 \
+                --output json
+              exit 1
+            fi
+
+            sleep 10
+          done
+
+          if [ "${STATUS}" != "Success" ]; then
+            echo "SSM deploy timeout"
+            aws ssm list-command-invocations \
+              --command-id "${COMMAND_ID}" \
+              --details \
+              --region ap-northeast-2 \
+              --output json
+            exit 1
+          fi
+
+      # 5️⃣ 배포 후 스모크 테스트
+      - name: Post-deploy Smoke Test
+        run: |
+            BASE_URL="${{ secrets.RELEASE_BASE_URL }}"
+            for i in $(seq 1 12); do
+              echo "Attempt $i/12..."
+              if curl -fsS "$BASE_URL/server/health" >/dev/null 2>&1; then
+                echo "Health check passed"
+                exit 0
+              fi
+              sleep 10
+            done
+            echo "Health check failed after 120s"
+            exit 1
+
+  cd-notify-success:
+    needs: cd
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Discord CD success
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK_BE }}
+          status: success
+          title: "🟢 릴리즈서버 백엔드 배포 성공"
+          content: "릴리즈서버 백엔드 배포 완료!"
+          color: 0x00FF00
+
+  cd-notify-failure:
+    needs: cd
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Discord CD failure
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK_BE }}
+          status: failure
+          title: "🔴 릴리즈서버 백엔드 배포 실패"
+          content: "<@&${{ secrets.BACKEND_ROLE_ID }}> 릴리즈서버 백엔드 배포 실패!"
+          color: 0xFF0000

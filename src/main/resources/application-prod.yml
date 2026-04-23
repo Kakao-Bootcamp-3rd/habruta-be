@@ -1,0 +1,103 @@
+spring:
+    config:
+        activate:
+            on-profile: prod
+
+    # JSON 날짜 포맷 설정 (Prod에서도 KST 고정)
+    jackson:
+        serialization:
+            write-dates-as-timestamps: false
+        time-zone: Asia/Seoul
+
+    flyway:
+        locations: classpath:db/migration
+
+    jpa:
+        hibernate:
+            ddl-auto: validate
+        show-sql: false      # 운영에선 쿼리 로그 끔
+        open-in-view: false
+        properties:
+            hibernate:
+                session_factory.statement_inspector: com.imyme.mine.global.logging.QueryCountInterceptor
+
+    # Prod 환경 카카오 OAuth 설정
+    security:
+        oauth2:
+            client:
+                registration:
+                    kakao:
+                        redirect-uri: ${FRONTEND_URL_PROD}/auth/callback/kakao
+
+    # Prod 환경 Redis 설정
+    # ElastiCache: TLS ON, ACL 사용 (최고 보안 수준)
+    data:
+        redis:
+            host: ${REDIS_HOST}
+            port: ${REDIS_PORT:6379}
+            password: ${REDIS_PASSWORD}  # AWS Secrets Manager에서 주입
+            ssl:
+                enabled: true  # TLS 필수
+            timeout: 5000ms
+            lettuce:
+                pool:
+                    max-active: 20
+                    max-idle: 10
+                    min-idle: 5
+                    max-wait: 5000ms
+
+    # Prod 환경 RabbitMQ 설정
+    # Amazon MQ for RabbitMQ: TLS ON, 강력한 인증 (최고 보안 수준)
+    rabbitmq:
+        # Amazon MQ 엔드포인트 (예: b-xxx-xxx.mq.ap-northeast-2.amazonaws.com)
+        host: ${RABBITMQ_HOST}
+        port: ${RABBITMQ_PORT:5671}  # TLS 포트 (amqps://)
+        username: ${RABBITMQ_USER}
+        password: ${RABBITMQ_PASSWORD}  # AWS Secrets Manager에서 주입 (강력한 비밀번호)
+        ssl:
+            enabled: true  # TLS 필수
+            algorithm: TLSv1.2  # 최소 TLS 버전
+        connection-timeout: 10000ms
+        requested-heartbeat: 30  # 연결 유지 확인 (초)
+        listener:
+            simple:
+                acknowledge-mode: manual
+                prefetch: 5  # 동시 처리 메시지 수 (성능 최적화)
+                concurrency: 3  # 최소 Consumer 수
+                max-concurrency: 10  # 최대 Consumer 수 (부하 대응)
+                retry:
+                    enabled: true
+                    initial-interval: 3000ms
+                    max-attempts: 3
+                    multiplier: 2.0
+                    max-interval: 10000ms
+    # k8s 관련된 설정 추가
+    lifecycle:
+        timeout-per-shutdown-phase: 30s
+
+# k8s 관련된 설정 추가
+server:
+    shutdown: graceful
+
+logging:
+    level:
+        root: INFO
+        com.imyme.mine: INFO
+        org.springframework.security: INFO
+        # 운영에선 쿼리 로그 끄거나 에러만 봄
+        org.hibernate.SQL: WARN
+
+solo:
+    mq:
+        enabled: true  # AI 서버가 MQ 경로로 전환 (HTTP /transcriptions 엔드포인트 제거됨)
+
+# (선택) 운영 환경에서 배치 작업을 켜려면 여기서 설정
+knowledge:
+    batch:
+        enabled: false
+
+# Sentry 설정 (운영 환경용)
+sentry:
+    environment: prod
+    debug: false  # debug 로그 끔
+    traces-sample-rate: 0.1  # 10% 샘플링 (비용 절감)

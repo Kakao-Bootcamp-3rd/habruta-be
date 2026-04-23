@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: mine-redis-dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-dev-data:/data
+    command: redis-server --appendonly yes
+    # 비밀번호 제거: Dev 서버는 Private Subnet + SG로 보안 통제
+    # TLS도 사용하지 않음 (application-dev.yml과 일치)
+    restart: unless-stopped
+    networks:
+      - mine-dev-network
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: mine-postgres-dev
+    environment:
+      POSTGRES_DB: mine
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-dev-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - mine-dev-network
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: mine-rabbitmq-dev
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-admin}
+    ports:
+      - "5672:5672"   # AMQP protocol port
+      - "15672:15672" # Management UI port
+    volumes:
+      - rabbitmq-dev-data:/var/lib/rabbitmq
+    restart: unless-stopped
+    networks:
+      - mine-dev-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  redis-dev-data:
+    driver: local
+  postgres-dev-data:
+    driver: local
+  rabbitmq-dev-data:
+    driver: local
+
+networks:
+  mine-dev-network:
+    driver: bridge

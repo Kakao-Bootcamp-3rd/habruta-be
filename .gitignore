@@ -1,0 +1,100 @@
+HELP.md
+.gradle
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### VS Code ###
+.vscode/
+
+### macOS ###
+.DS_Store
+
+
+
+### Logs ###
+logs/
+*.log
+
+# WebSocket test pages (development only)
+src/main/resources/static/websocket-test.html
+
+# Environment variables
+/src/main/resources/.env
+.env
+*.env
+.env.local
+.env.*.local
+
+# Claude.md
+CLAUDE.md
+
+# AGENTS.md
+AGENTS.md
+
+# Claude Code CLI
+.claude/
+
+# k6 test results
+k6-tests/results.json
+k6-tests/*.json
+/monitoring/HOW-TO-RUN.md
+/monitoring/CHEATSHEET.md
+/monitoring/METRICS-GUIDE.md
+/monitoring/QUICKSTART.md
+/k6-tests/README.md
+/monitoring/README.md
+
+# Redis persistence files
+dump.rdb
+appendonly.aof
+*.rdb
+*.aof
+
+# Docker volumes (로컬에서 생성되는 볼륨 데이터)
+# docker-compose.yml에서 생성되는 볼륨은 무시하지 않음 (외부 관리)
+
+# 개발 가이드 문서 (선택적 - 팀 정책에 따라)
+README-*.md
+!README.md
+
+/docs
+
+# AWS Monitoring scripts (절대 유출 금지)
+/monitoring/mine-mvp2-monitoring-setup.sh
+/monitoring/mine-mvp2-monitoring.sh
+
+# k6 SSE 비교 측정 결과
+/monitoring/k6-scripts/summary-before-sse.json
+/monitoring/k6-scripts/summary-after-sse.json
+summary-before-sse.json
+summary-after-sse.json

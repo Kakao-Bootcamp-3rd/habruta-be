@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <property name="LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"/>
+
+    <!-- ==================== LOCAL/DEV 환경: 개발자 친화적 로그! ==================== -->
+    <springProfile name="local,default,dev">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <!-- 로컬/개발 환경에서 읽기 쉬운 텍스트 로그 -->
+                <pattern>%d{HH:mm:ss.SSS} [%5p] [%20.20t] %-36.36logger{36} - %m%n%ex{10}</pattern>
+                <charset>UTF-8</charset>
+            </encoder>
+        </appender>
+
+        <!-- 에러만 따로 보기 위한 파일 로그 -->
+        <appender name="ERROR_FILE" class="ch.qos.logback.core.FileAppender">
+            <file>logs/error.log</file>
+            <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+                <level>ERROR</level>
+            </filter>
+            <encoder>
+                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n%ex{full}</pattern>
+            </encoder>
+        </appender>
+
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="ERROR_FILE"/>
+        </root>
+
+        <!-- 개발할 때 유용한 로거들 -->
+        <logger name="com.imyme.mine" level="DEBUG"/>
+        <logger name="org.springframework.security" level="INFO"/>
+        <logger name="org.springframework.web" level="INFO"/>
+<!--        <logger name="org.hibernate.SQL" level="DEBUG"/>-->
+<!--        <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="TRACE"/>-->
+<!--        <logger name="org.springframework.transaction" level="DEBUG"/>-->
+<!--        <logger name="org.springframework.data.jpa" level="DEBUG"/>-->
+<!--        <logger name="root" level="DEBUG"/>-->
+    </springProfile>
+
+    <!-- ==================== TEST/TC 환경: 에러 파일 + 콘솔 ==================== -->
+    <springProfile name="test,tc">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%5p] [%15.15t] %-40.40logger{39} : %m%n%ex{full}</pattern>
+                <charset>UTF-8</charset>
+            </encoder>
+        </appender>
+
+        <appender name="TEST_ERROR_FILE" class="ch.qos.logback.core.FileAppender">
+            <file>logs/test-error.log</file>
+            <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+                <level>ERROR</level>
+            </filter>
+            <encoder>
+                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n%ex{full}</pattern>
+            </encoder>
+        </appender>
+
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="TEST_ERROR_FILE"/>
+        </root>
+
+        <logger name="com.imyme.mine" level="DEBUG"/>
+        <logger name="org.hibernate.SQL" level="DEBUG"/>
+    </springProfile>
+
+    <!-- ==================== PROD/RELEASE 환경: JSON 로그 (Loki용) ==================== -->
+    <springProfile name="prod,release">
+        <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <includeMdcKeyName>clientIp</includeMdcKeyName>
+                <includeMdcKeyName>path</includeMdcKeyName>
+                <includeMdcKeyName>method</includeMdcKeyName>
+                <includeMdcKeyName>status</includeMdcKeyName>
+                <includeMdcKeyName>userId</includeMdcKeyName>
+                <includeMdcKeyName>requestId</includeMdcKeyName>
+
+                <!-- 스택트레이스 포함 -->
+                <throwableConverter class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
+                    <maxDepthPerThrowable>30</maxDepthPerThrowable>
+                    <maxLength>8192</maxLength>
+                    <shortenedClassNameLength>30</shortenedClassNameLength>
+                    <exclude>^sun\.reflect\..*\.invoke</exclude>
+                    <exclude>^net\.sf\.cglib\.proxy\.MethodProxy\.invoke</exclude>
+                </throwableConverter>
+
+                <timeZone>Asia/Seoul</timeZone>
+                <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSSXXX</timestampPattern>
+                <fieldNames>
+                    <timestamp>timestamp</timestamp>
+                    <levelValue>[ignore]</levelValue>
+                    <version>[ignore]</version>
+                    <logger>logger</logger>
+                    <thread>[ignore]</thread>
+                    <stackTrace>stack_trace</stackTrace>
+                </fieldNames>
+            </encoder>
+        </appender>
+
+        <root level="INFO">
+            <appender-ref ref="JSON_CONSOLE"/>
+        </root>
+
+        <!-- 애플리케이션 로그 -->
+        <logger name="com.imyme.mine" level="INFO"/>
+
+        <!-- Hibernate/JPA 로그 완전히 끄기 -->
+        <logger name="org.hibernate.SQL" level="OFF"/>
+        <logger name="org.hibernate.type" level="OFF"/>
+        <logger name="org.hibernate.orm" level="WARN"/>
+        <logger name="org.hibernate.jpa" level="WARN"/>
+        <logger name="org.hibernate.engine" level="WARN"/>
+        <logger name="org.hibernate.cache" level="WARN"/>
+
+        <!-- Spring 프레임워크 로그 줄이기 -->
+        <logger name="org.springframework" level="WARN"/>
+        <logger name="org.springframework.web" level="WARN"/>
+        <logger name="org.springframework.security" level="WARN"/>
+        <logger name="org.springframework.data" level="WARN"/>
+        <logger name="org.springframework.boot" level="WARN"/>
+        <logger name="org.springframework.orm" level="WARN"/>
+
+        <!-- Database 관련 -->
+        <logger name="com.zaxxer.hikari" level="WARN"/>
+        <logger name="org.flywaydb" level="WARN"/>
+
+        <!-- 서버 관련 -->
+        <logger name="org.apache.catalina" level="WARN"/>
+        <logger name="org.apache.coyote" level="WARN"/>
+
+        <!-- Sentry 로그 끄기 -->
+        <logger name="io.sentry" level="WARN"/>
+    </springProfile>
+</configuration>
