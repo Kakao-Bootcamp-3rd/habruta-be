@@ -171,8 +171,8 @@ jobs:
           push: true
           platforms: linux/arm64
           tags: |
-            219268921033.dkr.ecr.ap-northeast-2.amazonaws.com/imyme-backend:${{ github.sha }}
-            219268921033.dkr.ecr.ap-northeast-2.amazonaws.com/imyme-backend:release-latest
+            ${{ secrets.ECR_REPOSITORY_URI }}:${{ github.sha }}
+            ${{ secrets.ECR_REPOSITORY_URI }}:release-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -181,21 +181,19 @@ jobs:
         run: |
           set -euo pipefail
 
-          IMAGE_URI="219268921033.dkr.ecr.ap-northeast-2.amazonaws.com/imyme-backend:release-latest"
-
           cat > /tmp/ssm-params.json << 'ENDJSON'
           {
             "commands": [
               "set -eu",
               "cd /home/ubuntu",
-              "aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 219268921033.dkr.ecr.ap-northeast-2.amazonaws.com",
+              "IMAGE_URI=${{ secrets.ECR_REPOSITORY_URI }}:release-latest",
+              "aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin $(echo $IMAGE_URI | cut -d'/' -f1)",
               "> /home/ubuntu/.env",
               "echo '# ------------- COMMON --------------' >> /home/ubuntu/.env",
               "aws ssm get-parameters-by-path --path '/MINE/MVP1/BE/ENV/COMMON' --with-decryption --query 'Parameters[*].[Name,Value]' --output text --region ap-northeast-2 | while IFS=$(printf '\\t') read -r name value; do key=$(basename \"$name\"); echo \"$key=${value:-}\" >> /home/ubuntu/.env; done",
               "echo '' >> /home/ubuntu/.env",
               "echo '# ------------- RELEASE --------------' >> /home/ubuntu/.env",
               "aws ssm get-parameters-by-path --path '/MINE/MVP1/BE/ENV/RELEASE' --with-decryption --query 'Parameters[*].[Name,Value]' --output text --region ap-northeast-2 | while IFS=$(printf '\\t') read -r name value; do key=$(basename \"$name\"); echo \"$key=${value:-}\" >> /home/ubuntu/.env; done",
-              "IMAGE_URI=219268921033.dkr.ecr.ap-northeast-2.amazonaws.com/imyme-backend:release-latest",
               "docker pull $IMAGE_URI",
               "docker compose up -d",
               "docker image prune -f"
