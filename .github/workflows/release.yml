@@ -104,10 +104,10 @@ jobs:
       - name: Discord CI success
         uses: sarisia/actions-status-discord@v1
         with:
-          webhook: ${{ secrets.DISCORD_WEBHOOK_BE }}
+          webhook: https://discord.com/api/webhooks/1496686943264702495/0pyrdLmgQXoXT0QzsfuGQmSDvxWveQa5X9NMF_LJwEF0haxcIW-Co_Vdh4LvHIjKhCQG
           status: success
           title: "🟢 릴리즈서버 백엔드 CI 성공"
-          content: "<@&${{ secrets.BACKEND_ROLE_ID }}> 릴리즈서버 백엔드 CI 성공!"
+          content: "릴리즈서버 백엔드 CI 성공!"
           color: 0x00FF00
 
   ci-notify-failure:
@@ -118,10 +118,10 @@ jobs:
       - name: Discord CI failure
         uses: sarisia/actions-status-discord@v1
         with:
-          webhook: ${{ secrets.DISCORD_WEBHOOK_BE }}
+          webhook: https://discord.com/api/webhooks/1496686943264702495/0pyrdLmgQXoXT0QzsfuGQmSDvxWveQa5X9NMF_LJwEF0haxcIW-Co_Vdh4LvHIjKhCQG
           status: failure
           title: "🔴 릴리즈서버 백엔드 CI 실패"
-          content: "<@&${{ secrets.BACKEND_ROLE_ID }}> 릴리즈서버 백엔드 CI 실패!"
+          content: "릴리즈서버 백엔드 CI 실패!"
           color: 0xFF0000
 
   # 2) CD
@@ -271,7 +271,7 @@ jobs:
       - name: Discord CD success
         uses: sarisia/actions-status-discord@v1
         with:
-          webhook: ${{ secrets.DISCORD_WEBHOOK_BE }}
+          webhook: https://discord.com/api/webhooks/1496686943264702495/0pyrdLmgQXoXT0QzsfuGQmSDvxWveQa5X9NMF_LJwEF0haxcIW-Co_Vdh4LvHIjKhCQG
           status: success
           title: "🟢 릴리즈서버 백엔드 배포 성공"
           content: "릴리즈서버 백엔드 배포 완료!"
@@ -285,8 +285,8 @@ jobs:
       - name: Discord CD failure
         uses: sarisia/actions-status-discord@v1
         with:
-          webhook: ${{ secrets.DISCORD_WEBHOOK_BE }}
+          webhook: https://discord.com/api/webhooks/1496686943264702495/0pyrdLmgQXoXT0QzsfuGQmSDvxWveQa5X9NMF_LJwEF0haxcIW-Co_Vdh4LvHIjKhCQG
           status: failure
           title: "🔴 릴리즈서버 백엔드 배포 실패"
-          content: "<@&${{ secrets.BACKEND_ROLE_ID }}> 릴리즈서버 백엔드 배포 실패!"
+          content: "릴리즈서버 백엔드 배포 실패!"
           color: 0xFF0000
