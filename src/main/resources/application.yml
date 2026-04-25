@@ -1,7 +1,7 @@
 spring:
     config:
         # .env 파일을 불러오는 설정 (로컬 개발 시 유용)
-        import: optional:file:.env[.yaml]
+        import: optional:file:.env[.properties]
 
     application:
         name: mine
@@ -87,7 +87,7 @@ spring:
                     kakao:
                         client-id: ${KAKAO_CLIENT_ID}
                         client-secret: ${KAKAO_CLIENT_SECRET}
-                        redirect-uri: ${FRONTEND_URL_LOCAL}/auth/callback/kakao  # Local 기본값
+                        redirect-uri: ${FRONTEND_URL_LOCAL:http://localhost:3000}/auth/callback/kakao  # Local 기본값
                         authorization-grant-type: authorization_code
                         client-authentication-method: client_secret_post
                         scope:
@@ -126,10 +126,10 @@ jwt:
     refresh-token-expiration: 604800000 # 7일
 
 cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
 
 swagger:
-    dev-server-url: ${BACKEND_URL_DEV}
+    dev-server-url: ${BACKEND_URL_DEV:http://localhost:8080}
 
 # ==================================================
 # OAuth Kakao 동적 Redirect URI 설정
@@ -137,13 +137,13 @@ swagger:
 oauth:
     kakao:
         redirect-uris:
-            local: ${FRONTEND_URL_LOCAL}/auth/callback/kakao
-            dev: ${FRONTEND_URL_DEV}/auth/callback/kakao
-            prod: ${FRONTEND_URL_PROD}/auth/callback/kakao
+            local: ${FRONTEND_URL_LOCAL:http://localhost:3000}/auth/callback/kakao
+            dev: ${FRONTEND_URL_DEV:http://localhost:3000}/auth/callback/kakao
+            prod: ${FRONTEND_URL_PROD:http://localhost:3000}/auth/callback/kakao
         origins:
-            local: ${FRONTEND_URL_LOCAL}
-            dev: ${FRONTEND_URL_DEV}
-            prod: ${FRONTEND_URL_PROD}
+            local: ${FRONTEND_URL_LOCAL:http://localhost:3000}
+            dev: ${FRONTEND_URL_DEV:http://localhost:3000}
+            prod: ${FRONTEND_URL_PROD:http://localhost:3000}
 
 # ==================================================
 # 비즈니스 로직 설정 (Attempt, Profile, Knowledge)
@@ -236,15 +236,15 @@ management:
 # ==================================================
 # Sentry (에러 추적 & 성능 모니터링)
 # ==================================================
-firebase:
-    service-account-key: ${FIREBASE_SERVICE_ACCOUNT_KEY:}
+# firebase:
+#     service-account-key: ${FIREBASE_SERVICE_ACCOUNT_KEY:}
 
-sentry:
-    dsn: ${SENTRY_DSN}
-    environment: local
-    traces-sample-rate: 1.0  # 테스트용 100% 샘플링
-    send-default-pii: false
-    debug: false
-    logging:
-        minimum-event-level: error
-        minimum-breadcrumb-level: info
+# sentry:
+#     dsn: ${SENTRY_DSN}
+#     environment: local
+#     traces-sample-rate: 1.0  # 테스트용 100% 샘플링
+#     send-default-pii: false
+#     debug: false
+#     logging:
+#         minimum-event-level: error
+#         minimum-breadcrumb-level: info
