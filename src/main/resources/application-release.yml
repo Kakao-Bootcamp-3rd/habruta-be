@@ -50,6 +50,7 @@ spring:
     # Release 환경 RabbitMQ 설정
     # Amazon MQ for RabbitMQ: TLS ON (Prod 검증용)
     rabbitmq:
+        dynamic: false  # MQ 미사용 시 RabbitAdmin 큐 선언으로 인한 연결 시도 방지
         # Amazon MQ 엔드포인트 (예: b-xxx-xxx.mq.ap-northeast-2.amazonaws.com)
         host: ${RABBITMQ_HOST}
         port: ${RABBITMQ_PORT:5671}  # TLS 포트 (amqps://)
@@ -62,6 +63,7 @@ spring:
         requested-heartbeat: 30  # 연결 유지 확인 (초)
         listener:
             simple:
+                auto-startup: false  # MQ 미사용 시 Consumer 연결 시도 방지
                 acknowledge-mode: manual
                 prefetch: 3  # Release는 Prod보다 낮은 동시 처리 수
                 concurrency: 2  # 최소 Consumer 수
@@ -82,7 +84,7 @@ logging:
 
 solo:
     mq:
-        enabled: true  # AI 서버가 MQ 경로로 전환 (HTTP /transcriptions 엔드포인트 제거됨)
+        enabled: false  # MQ 미사용: 기존 HTTP 폴링 경로 사용
 
 # Release 환경에서 배치 작업 설정 (Prod 검증용)
 knowledge:

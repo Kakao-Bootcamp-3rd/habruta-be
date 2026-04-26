@@ -36,6 +36,7 @@ spring:
     # Option 1: Docker Compose (간단한 테스트)
     # Option 2: Amazon MQ (운영 환경 유사 테스트)
     rabbitmq:
+        dynamic: false  # MQ 미사용 시 RabbitAdmin 큐 선언으로 인한 연결 시도 방지
         host: ${RABBITMQ_HOST:localhost}
         port: ${RABBITMQ_PORT:5672}
         username: ${RABBITMQ_USER:admin}
@@ -45,6 +46,7 @@ spring:
         connection-timeout: 10000ms
         listener:
             simple:
+                auto-startup: false  # MQ 미사용 시 Consumer 연결 시도 방지
                 acknowledge-mode: manual
                 prefetch: 1  # 동시 처리 메시지 수 제한
                 retry:
@@ -55,13 +57,13 @@ spring:
 
 solo:
     mq:
-        enabled: true  # MQ 경로 활성화 (AI 서버가 solo.stt.request 큐로 전환)
+        enabled: false  # MQ 미사용: 기존 HTTP 폴링 경로 사용
 
 logging:
     level:
         com.imyme.mine: DEBUG
         org.flywaydb: INFO
-        org.springframework.amqp: DEBUG  # RabbitMQ 디버깅
+        org.springframework.amqp: INFO
 
 sentry:
     environment: dev

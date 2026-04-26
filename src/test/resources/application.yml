@@ -35,12 +35,14 @@ spring:
     # RabbitMQ 설정 (테스트용 - 임베디드 사용 또는 비활성화)
     # 실제 RabbitMQ가 필요한 통합 테스트에서는 Testcontainers 권장
     rabbitmq:
+        dynamic: false
         host: localhost
         port: 5672
         username: guest
         password: guest
         listener:
             simple:
+                auto-startup: false
                 acknowledge-mode: manual
                 prefetch: 1
                 missing-queues-fatal: false  # 큐 없어도 테스트 실패 방지
