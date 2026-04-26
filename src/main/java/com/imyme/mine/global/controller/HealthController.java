@@ -21,7 +21,7 @@ public class HealthController {
         summary = "서버 헬스체크",
         description = "서버의 정상 작동 여부를 확인합니다. 로드밸런서 또는 모니터링 도구에서 사용됩니다."
     )
-    @GetMapping("/health")
+    @GetMapping({"/health", "/server/health"})
     public ResponseEntity<Map<String, Object>> health() {
         return ResponseEntity.ok(Map.of(
                 "status", "UP",
