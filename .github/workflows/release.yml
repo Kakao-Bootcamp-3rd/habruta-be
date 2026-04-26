@@ -250,12 +250,17 @@ jobs:
       - name: Post-deploy Smoke Test
         run: |
             BASE_URL="${{ secrets.RELEASE_BASE_URL }}"
+            BASE_URL="${BASE_URL%/}"
             for i in $(seq 1 12); do
               echo "Attempt $i/12..."
-              if curl -fsS "$BASE_URL/server/health" >/dev/null 2>&1; then
-                echo "Health check passed"
-                exit 0
-              fi
+              for path in "/server/health" "/health"; do
+                status=$(curl -sS -o /dev/null -w "%{http_code}" "$BASE_URL$path" || true)
+                echo "Health check $path -> $status"
+                if [ "$status" = "200" ]; then
+                  echo "Health check passed"
+                  exit 0
+                fi
+              done
               sleep 10
             done
             echo "Health check failed after 120s"
