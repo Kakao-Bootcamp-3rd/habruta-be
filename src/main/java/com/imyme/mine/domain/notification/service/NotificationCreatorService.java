@@ -56,6 +56,10 @@ public class NotificationCreatorService {
     public void create(Long userId, NotificationType type,
                        String title, String content,
                        Long referenceId, String referenceType) {
+        if (type.isChallenge()) {
+            log.info("[Notification] 챌린지 알림 생성 건너뜀 - userId={}, type={}", userId, type);
+            return;
+        }
 
         // 수신 설정 확인 (미설정 시 기본값: 모든 알림 허용)
         NotificationPreference preference = notificationPreferenceRepository
