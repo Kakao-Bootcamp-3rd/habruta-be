@@ -3,13 +3,16 @@
 
 import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
 
 // === Configuration ===
-const BASE_URL = process.env.BASE_URL ?? 'https://release.imymemine.kr'
-const E2E_LOGIN_PATH = '/server/e2e/login'
+const BASE_URL =
+  process.env.BASE_URL ?? 'http://habruta-release-alb-176225423.ap-northeast-2.elb.amazonaws.com'
+const API_PREFIX = process.env.API_PREFIX ?? ''
+const E2E_LOGIN_PATH = '/e2e/login'
 const AUDIO_FILE =
   process.env.AUDIO_FILE ??
-  '/Users/wonhyeonseob/Desktop/git/MINE/fe/4-team-IMYME-fe/load/release/assets/sample_speech.webm'
+  fileURLToPath(new URL('../../../../assets/sample_speech.webm', import.meta.url))
 const AUDIO_CONTENT_TYPE = 'audio/webm'
 
 // Scheduler config
@@ -18,12 +21,13 @@ const TICK_MS = Number(process.env.TICK_MS ?? '1000')
 const MAX_VU_CAP = Number(process.env.MAX_VU_CAP ?? '4000')
 
 // Deprecated (unused)
-void (process.env.CONCURRENCY ?? '100')
+void (process.env.CO1NCURRENCY ?? '100')
 void (process.env.ITERATIONS ?? '100')
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const msToSec = (ms) => (ms / 1000).toFixed(2)
 const toKST = (date) => date.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })
+const apiUrl = (path) => new URL(`${API_PREFIX}${path}`, BASE_URL).toString()
 
 function percentile(arr, p) {
   if (arr.length === 0) return 0
@@ -64,7 +68,7 @@ function getStageName(elapsedMs) {
 // === API Functions ===
 async function e2eLogin(deviceUuid, vuId) {
   const loginPath = `${E2E_LOGIN_PATH}/${vuId}`
-  const response = await fetch(new URL(loginPath, BASE_URL).toString(), {
+  const response = await fetch(apiUrl(loginPath), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ deviceUuid }),
@@ -79,7 +83,7 @@ async function e2eLogin(deviceUuid, vuId) {
 }
 
 async function fetchCategories(accessToken) {
-  const response = await fetch(new URL('/server/categories', BASE_URL).toString(), {
+  const response = await fetch(apiUrl('/categories'), {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
   if (!response.ok) throw new Error(`Categories failed: ${response.status}`)
@@ -89,7 +93,7 @@ async function fetchCategories(accessToken) {
 
 async function fetchKeywords(accessToken, categoryId) {
   const response = await fetch(
-    new URL(`/server/categories/${categoryId}/keywords`, BASE_URL).toString(),
+    apiUrl(`/categories/${categoryId}/keywords`),
     { headers: { Authorization: `Bearer ${accessToken}` } },
   )
   if (!response.ok) throw new Error(`Keywords failed: ${response.status}`)
@@ -98,7 +102,7 @@ async function fetchKeywords(accessToken, categoryId) {
 }
 
 async function createCard(accessToken, { categoryId, keywordId, title }) {
-  const response = await fetch(new URL('/server/cards', BASE_URL).toString(), {
+  const response = await fetch(apiUrl('/cards'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -114,7 +118,7 @@ async function createCard(accessToken, { categoryId, keywordId, title }) {
 }
 
 async function createAttempt(accessToken, cardId) {
-  const response = await fetch(new URL(`/server/cards/${cardId}/attempts`, BASE_URL).toString(), {
+  const response = await fetch(apiUrl(`/cards/${cardId}/attempts`), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -129,7 +133,7 @@ async function createAttempt(accessToken, cardId) {
 }
 
 async function getPresignedUrl(accessToken, attemptId) {
-  const response = await fetch(new URL('/server/learning/presigned-url', BASE_URL).toString(), {
+  const response = await fetch(apiUrl('/learning/presigned-url'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -152,7 +156,7 @@ async function uploadAudio(uploadUrl, audioBytes) {
 }
 
 async function warmupServerless(accessToken) {
-  const response = await fetch(new URL('/server/learning/warmup', BASE_URL).toString(), {
+  const response = await fetch(apiUrl('/learning/warmup'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

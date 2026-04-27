@@ -44,6 +44,11 @@ public class NotificationBroadcastService {
     @Async
     public void broadcastToAllActive(NotificationType type, String title, String content,
                                      Long referenceId, String referenceType) {
+        if (type.isChallenge()) {
+            log.info("[NotificationBroadcast] 챌린지 알림 비활성화 - type={}", type);
+            return;
+        }
+
         log.info("[NotificationBroadcast] 브로드캐스트 시작: type={}", type);
 
         int offset = 0;

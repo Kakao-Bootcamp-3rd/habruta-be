@@ -18,4 +18,12 @@ public enum NotificationType {
 
     // 4. 시스템 (System)
     SYSTEM                // 시스템 공지
+    ;
+
+    public boolean isChallenge() {
+        return switch (this) {
+            case CHALLENGE_OPEN, CHALLENGE_PERSONAL_RESULT, CHALLENGE_OVERALL_RESULT -> true;
+            default -> false;
+        };
+    }
 }
