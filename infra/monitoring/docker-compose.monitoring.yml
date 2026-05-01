@@ -45,6 +45,18 @@ services:
       - monitoring
     depends_on:
       - prometheus
+      - zipkin
+    restart: unless-stopped
+
+  zipkin:
+    image: openzipkin/zipkin:latest
+    container_name: imyme-zipkin
+    ports:
+      - "9411:9411"
+    environment:
+      - STORAGE_TYPE=mem
+    networks:
+      - monitoring
     restart: unless-stopped
 
 networks:

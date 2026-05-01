@@ -9,6 +9,13 @@ datasources:
     isDefault: true
     editable: true
 
+  # Zipkin - request tracing
+  - name: Zipkin
+    type: zipkin
+    access: proxy
+    url: http://zipkin:9411
+    editable: true
+
   # InfluxDB - k6 메트릭
   - name: InfluxDB
     type: influxdb
