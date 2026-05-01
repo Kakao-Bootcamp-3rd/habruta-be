@@ -193,6 +193,9 @@ knowledge:
 # ==================================================
 server:
     port: 8080
+    tomcat:
+        mbeanregistry:
+            enabled: true
     servlet:
         encoding:
             charset: UTF-8
