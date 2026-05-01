@@ -203,7 +203,7 @@ jobs:
 
           COMMAND_ID=$(aws ssm send-command \
             --document-name "AWS-RunShellScript" \
-            --targets "Key=tag:aws:autoscaling:groupName,Values=mine_mvp1_be_asg" \
+            --targets "Key=tag:aws:autoscaling:groupName,Values=habruta-release-be-asg" \
             --comment "backend release deploy (${GITHUB_SHA})" \
             --parameters file:///tmp/ssm-params.json \
             --region ap-northeast-2 \
