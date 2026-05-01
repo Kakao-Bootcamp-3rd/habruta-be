@@ -89,6 +89,8 @@ dependencies {
     // Prometheus 메트릭 수집
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'io.micrometer:micrometer-registry-prometheus'
+    implementation 'io.micrometer:micrometer-tracing-bridge-brave'
+    implementation 'io.zipkin.reporter2:zipkin-reporter-brave'
 
     // Sentry (에러 추적 & 성능 모니터링) - Jakarta Starter
     implementation 'io.sentry:sentry-spring-boot-starter-jakarta:8.1.0'

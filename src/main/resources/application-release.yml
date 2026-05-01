@@ -96,3 +96,11 @@ sentry:
     environment: release
     debug: false
     traces-sample-rate: 0.1
+
+management:
+    tracing:
+        sampling:
+            probability: ${TRACING_SAMPLING_PROBABILITY:0.1}
+    zipkin:
+        tracing:
+            endpoint: ${ZIPKIN_ENDPOINT:http://52.79.39.249:9411/api/v2/spans}
