@@ -2,7 +2,7 @@
 name: "\U0001F44D\U0001F3FB TB : "
 about: Describe this issue template's purpose here.
 title: 'TB : '
-labels: ''
+labels: ts
 assignees: ''
 
 ---
