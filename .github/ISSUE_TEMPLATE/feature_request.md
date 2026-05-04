@@ -1,9 +1,10 @@
 ---
-name: ✨ Feature Request
+name: "✨ Feature Request"
 about: 새로운 기능 개발을 위한 이슈
-title: '[FEAT] '
-labels: 'enhancement, feature'
+title: "[FEAT] "
+labels: enhancement
 assignees: ''
+
 ---
 
 ## 📋 Description

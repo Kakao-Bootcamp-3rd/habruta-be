@@ -1,9 +1,10 @@
 ---
-name: 📝 Documentation
+name: "\U0001F4DD Documentation"
 about: 문서 작성 및 업데이트
-title: '[DOCS] '
-labels: 'documentation'
+title: "[DOCS] "
+labels: documentation
 assignees: ''
+
 ---
 
 ## 📝 문서 유형
