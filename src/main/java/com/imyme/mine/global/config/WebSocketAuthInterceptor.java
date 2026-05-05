@@ -1,6 +1,7 @@
 package com.imyme.mine.global.config;
 
 import com.imyme.mine.global.security.jwt.JwtTokenProvider;
+import com.imyme.mine.global.tracing.TraceSupport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.server.ServerHttpRequest;
@@ -23,6 +24,7 @@ import java.util.Map;
 public class WebSocketAuthInterceptor implements HandshakeInterceptor {
 
     private final JwtTokenProvider jwtTokenProvider;
+    private final TraceSupport traceSupport;
 
     @Override
     public boolean beforeHandshake(
@@ -32,11 +34,11 @@ public class WebSocketAuthInterceptor implements HandshakeInterceptor {
             Map<String, Object> attributes
     ) {
         try {
-            String token = extractToken(request);
+            String token = traceSupport.trace("ws.handshake.extract-token", () -> extractToken(request));
 
-            if (token != null && jwtTokenProvider.validateToken(token)) {
-                Long userId = jwtTokenProvider.getUserIdFromToken(token);
-                attributes.put("userId", userId);
+            if (token != null && traceSupport.trace("ws.handshake.validate-token", () -> jwtTokenProvider.validateToken(token))) {
+                Long userId = traceSupport.trace("ws.handshake.get-user-id", () -> jwtTokenProvider.getUserIdFromToken(token));
+                traceSupport.trace("ws.handshake.attributes.set-user", () -> attributes.put("userId", userId));
                 log.info("WebSocket handshake authenticated: userId={}", userId);
                 return true;
             }

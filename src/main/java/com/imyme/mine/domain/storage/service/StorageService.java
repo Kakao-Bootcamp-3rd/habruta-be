@@ -9,6 +9,7 @@ import com.imyme.mine.global.config.AttemptProperties;
 import com.imyme.mine.global.config.S3Properties;
 import com.imyme.mine.global.error.BusinessException;
 import com.imyme.mine.global.error.ErrorCode;
+import com.imyme.mine.global.tracing.TraceSupport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -42,6 +43,7 @@ public class StorageService {
     private final S3Properties s3Properties;
     private final CardAttemptRepository cardAttemptRepository;
     private final AttemptProperties attemptProperties;
+    private final TraceSupport traceSupport;
 
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
         "audio/mpeg",
@@ -69,7 +71,7 @@ public class StorageService {
         log.debug("Presigned URL 생성 시작 - userId: {}, attemptId: {}, contentType: {}",
             userId, request.attemptId(), request.contentType());
 
-        CardAttempt attempt = cardAttemptRepository.findById(request.attemptId())
+        CardAttempt attempt = traceSupport.trace("storage.presigned.attempt.find", () -> cardAttemptRepository.findById(request.attemptId()))
             .orElseThrow(() -> new BusinessException(ErrorCode.ATTEMPT_NOT_FOUND));
 
         if (!attempt.getCard().getUser().getId().equals(userId)) {
@@ -85,15 +87,19 @@ public class StorageService {
             throw new BusinessException(ErrorCode.UPLOAD_EXPIRED);
         }
 
-        String contentType = normalizeContentType(request.contentType());
-        String extension = getExtensionFromContentType(contentType);
+        String contentType = traceSupport.trace("storage.presigned.content-type.normalize", () -> normalizeContentType(request.contentType()));
+        String extension = traceSupport.trace("storage.presigned.extension.resolve", () -> getExtensionFromContentType(contentType));
 
         Long cardId = attempt.getCard().getId();
-        String objectKey = generateObjectKey(userId, cardId, attempt.getId(), extension);
+        String objectKey = traceSupport.trace(
+            "storage.presigned.object-key.generate",
+            () -> generateObjectKey(userId, cardId, attempt.getId(), extension));
 
-        attempt.reserveAudioKey(objectKey);
+        traceSupport.trace("storage.presigned.attempt.reserve-audio-key", () -> attempt.reserveAudioKey(objectKey));
 
-        PresignedPutObjectRequest presignedRequest = generatePresignedPutRequest(objectKey, contentType);
+        PresignedPutObjectRequest presignedRequest = traceSupport.trace(
+            "storage.presigned.s3.presign-put",
+            () -> generatePresignedPutRequest(objectKey, contentType));
 
         LocalDateTime presignedExpiresAt = LocalDateTime.now().plus(Duration.ofMinutes(attemptProperties.getUploadExpirationMinutes()));
 

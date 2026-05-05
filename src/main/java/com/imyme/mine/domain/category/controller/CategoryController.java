@@ -5,6 +5,7 @@ import com.imyme.mine.domain.category.service.CategoryService;
 import com.imyme.mine.domain.keyword.dto.CategoryKeywordsResponse;
 import com.imyme.mine.domain.keyword.service.KeywordService;
 import com.imyme.mine.global.common.response.ApiResponse;
+import com.imyme.mine.global.tracing.TraceSupport;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -22,6 +23,7 @@ public class CategoryController {
 
     private final CategoryService categoryService;
     private final KeywordService keywordService;
+    private final TraceSupport traceSupport;
 
     @Operation(
         summary = "카테고리 목록 조회",
@@ -31,7 +33,9 @@ public class CategoryController {
     public ApiResponse<List<CategoryResponse>> getCategories(
             @Parameter(description = "활성 상태 필터 (true: 활성만, false: 비활성만, null: 전체)") @RequestParam(required = false) Boolean isActive
     ) {
-        List<CategoryResponse> categories = categoryService.getCategories(isActive);
+        List<CategoryResponse> categories = traceSupport.trace(
+                "endpoint.categories.get.service",
+                () -> categoryService.getCategories(isActive));
         return ApiResponse.success(categories);
     }
 
@@ -44,7 +48,9 @@ public class CategoryController {
             @Parameter(description = "카테고리 ID", required = true) @PathVariable Long categoryId,
             @Parameter(description = "활성 상태 필터 (true: 활성만, false: 비활성만, null: 전체)") @RequestParam(required = false) Boolean isActive
     ) {
-        CategoryKeywordsResponse response = keywordService.getKeywordsByCategory(categoryId, isActive);
+        CategoryKeywordsResponse response = traceSupport.trace(
+                "endpoint.categories.keywords.get.service",
+                () -> keywordService.getKeywordsByCategory(categoryId, isActive));
         return ApiResponse.success(response);
     }
 }

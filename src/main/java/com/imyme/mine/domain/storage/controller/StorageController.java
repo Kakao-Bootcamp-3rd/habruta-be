@@ -6,6 +6,7 @@ import com.imyme.mine.domain.storage.service.StorageService;
 import com.imyme.mine.global.common.response.ApiResponse;
 import com.imyme.mine.global.security.UserPrincipal;
 import com.imyme.mine.global.security.annotation.CurrentUser;
+import com.imyme.mine.global.tracing.TraceSupport;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.*;
 public class StorageController {
 
     private final StorageService storageService;
+    private final TraceSupport traceSupport;
 
     @Operation(
         summary = "학습 오디오 Presigned URL 발급",
@@ -72,7 +74,9 @@ public class StorageController {
         Long userId = userPrincipal.getId();
         log.info("POST /learning/presigned-url - userId: {}, attemptId: {}", userId, request.attemptId());
 
-        PresignedUrlResponse response = storageService.generatePresignedUrl(userId, request);
+        PresignedUrlResponse response = traceSupport.trace(
+            "endpoint.learning.presigned-url.post.service",
+            () -> storageService.generatePresignedUrl(userId, request));
 
         return ApiResponse.success(response);
     }

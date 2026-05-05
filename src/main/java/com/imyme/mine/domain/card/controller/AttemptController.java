@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import com.imyme.mine.global.common.response.ApiResponse;
 import com.imyme.mine.global.security.UserPrincipal;
 import com.imyme.mine.global.security.annotation.CurrentUser;
+import com.imyme.mine.global.tracing.TraceSupport;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -38,6 +39,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AttemptController {
 
     private final AttemptService attemptService;
+    private final TraceSupport traceSupport;
 
     @Operation(
         summary = "학습 시도 생성",
@@ -73,8 +75,11 @@ public class AttemptController {
         if (request == null) {
             request = new AttemptCreateRequest(null);
         }
+        AttemptCreateRequest createRequest = request;
 
-        AttemptCreateResponse response = attemptService.createAttempt(userId, cardId, request);
+        AttemptCreateResponse response = traceSupport.trace(
+            "endpoint.cards.attempts.post.service",
+            () -> attemptService.createAttempt(userId, cardId, createRequest));
 
         return ApiResponse.success(response);
     }

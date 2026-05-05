@@ -10,6 +10,7 @@ import com.imyme.mine.domain.keyword.entity.Keyword;
 import com.imyme.mine.domain.keyword.repository.KeywordRepository;
 import com.imyme.mine.global.error.BusinessException;
 import com.imyme.mine.global.error.ErrorCode;
+import com.imyme.mine.global.tracing.TraceSupport;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -26,6 +27,7 @@ public class KeywordService {
 
     private final KeywordRepository keywordRepository;
     private final CategoryRepository categoryRepository;
+    private final TraceSupport traceSupport;
 
     /**
      * 특정 카테고리의 키워드 조회 (캐싱 적용)
@@ -35,7 +37,7 @@ public class KeywordService {
      */
     @Cacheable(value = "keywords", key = "#categoryId + ':' + (#isActive != null ? #isActive : 'all')", sync = true)
     public CategoryKeywordsResponse getKeywordsByCategory(Long categoryId, Boolean isActive) {
-        Category category = categoryRepository.findById(categoryId)
+        Category category = traceSupport.trace("keyword.category.find", () -> categoryRepository.findById(categoryId))
             .orElseThrow(() -> new BusinessException(
                 ErrorCode.CATEGORY_NOT_FOUND,
                 Map.of("categoryId", categoryId)
@@ -43,11 +45,17 @@ public class KeywordService {
 
         List<KeywordResponse> keywords;
         if (isActive == null) {
-            keywords = keywordRepository.findAllByCategoryIdOrderByDisplayOrderAsc(categoryId).stream()
+            keywords = traceSupport.trace(
+                    "keyword.repository.find-by-category",
+                    () -> keywordRepository.findAllByCategoryIdOrderByDisplayOrderAsc(categoryId))
+                .stream()
                 .map(KeywordResponse::from)
                 .toList();
         } else {
-            keywords = keywordRepository.findAllByCategoryIdAndIsActiveOrderByDisplayOrderAsc(categoryId, isActive).stream()
+            keywords = traceSupport.trace(
+                    "keyword.repository.find-by-category-active",
+                    () -> keywordRepository.findAllByCategoryIdAndIsActiveOrderByDisplayOrderAsc(categoryId, isActive))
+                .stream()
                 .map(KeywordResponse::from)
                 .toList();
         }
