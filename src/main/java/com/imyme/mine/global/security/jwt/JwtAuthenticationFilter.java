@@ -6,6 +6,8 @@ import com.imyme.mine.domain.auth.repository.UserSessionRepository;
 import com.imyme.mine.global.error.ErrorCode;
 import com.imyme.mine.global.security.UserPrincipal;
 import io.jsonwebtoken.ExpiredJwtException;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -21,6 +23,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.function.Supplier;
 
 /**
  * JWT 인증 필터
@@ -35,6 +38,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtTokenProvider jwtTokenProvider;
     private final UserRepository userRepository;
     private final UserSessionRepository userSessionRepository;
+    private final Tracer tracer;
 
     // JWT 토큰을 추출하고 검증하여 인증 정보 설정
     @Override
@@ -43,44 +47,72 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain
     ) throws ServletException, IOException {
+        Span jwtFilterSpan = startSpan("jwt.filter", request);
+        boolean chainInvoked = false;
+        try (Tracer.SpanInScope ignored = tracer.withSpan(jwtFilterSpan)) {
+            chainInvoked = doAuthenticate(request, response, filterChain);
+        } catch (ExpiredJwtException e) {
+            jwtFilterSpan.error(e);
+            request.setAttribute("exception", ErrorCode.TOKEN_EXPIRED.getCode());
+        } catch (JwtException | IllegalArgumentException e) {
+            jwtFilterSpan.error(e);
+            request.setAttribute("exception", ErrorCode.INVALID_TOKEN.getCode());
+        } finally {
+            jwtFilterSpan.end();
+        }
+
+        if (!chainInvoked) {
+            filterChain.doFilter(request, response);
+        }
+    }
+
+    private boolean doAuthenticate(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            FilterChain filterChain
+    ) throws IOException, ServletException {
         try {
             // Authorization 헤더에서 JWT 토큰 추출
-            String token = getJwtFromRequest(request);
+            String token = trace("jwt.extract-token", request, () -> getJwtFromRequest(request));
 
             // 토큰이 존재하고 유효한 경우
-            if (StringUtils.hasText(token) && jwtTokenProvider.validateToken(token)) {
+            if (StringUtils.hasText(token) && trace("jwt.validate-token", request, () -> jwtTokenProvider.validateToken(token))) {
                 // 토큰에서 사용자 ID 추출
-                Long userId = jwtTokenProvider.getUserIdFromToken(token);
+                Long userId = trace("jwt.get-user-id", request, () -> jwtTokenProvider.getUserIdFromToken(token));
 
                 // UserSession 존재 여부 확인을 통한 보안 강화 (로그아웃 여부 체크)
                 // TODO : 트래픽이 높아지면 Redis 방식(블랙리스트 방식)으로 마이그레이션 진행
-                if (!userSessionRepository.existsByUserId(userId)) {
+                if (!trace("jwt.session.exists", request, () -> userSessionRepository.existsByUserId(userId))) {
                     log.warn("Access denied: No active session found for user {}", userId);
                     request.setAttribute("exception", ErrorCode.SESSION_EXPIRED.getCode());
                     filterChain.doFilter(request, response);
-                    return;  // 인증 실패, 다음 필터로 넘어가지 않음
+                    return true;  // 인증 실패, 다음 필터로 넘어가지 않음
                 }
 
                 // 사용자 조회
                 // TODO: 캐싱 적용 고려 혹은 토큰에 사용자 정보 포함(사용자 늘면) -> 토큰 정보로만 객체 생성 후 DB 조회 없이 인증 처리
-                User user = userRepository.findById(userId)
+                User user = trace("jwt.user.find", request, () -> userRepository.findById(userId))
                         .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
 
                 // UserPrincipal 생성
-                UserPrincipal userPrincipal = UserPrincipal.from(user);
+                UserPrincipal userPrincipal = trace("jwt.user-principal.create", request, () -> UserPrincipal.from(user));
 
                 // Authentication 객체 생성
-                UsernamePasswordAuthenticationToken authentication =
-                        new UsernamePasswordAuthenticationToken(
+                UsernamePasswordAuthenticationToken authentication = trace(
+                        "jwt.authentication.create",
+                        request,
+                        () -> new UsernamePasswordAuthenticationToken(
                                 userPrincipal,
                                 null,
-                                userPrincipal.getAuthorities()
-                        );
+                                userPrincipal.getAuthorities()));
 
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
                 // SecurityContext에 인증 정보 설정
-                SecurityContextHolder.getContext().setAuthentication(authentication);
+                trace("jwt.security-context.set", request, () -> {
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                    return null;
+                });
 
                 log.debug("Set authentication for user: {}", userId);
             }
@@ -90,7 +122,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             request.setAttribute("exception", ErrorCode.INVALID_TOKEN.getCode());
         }
 
-        filterChain.doFilter(request, response);
+        return false;
     }
 
     // HTTP 요청의 Authorization 헤더에서 Bearer 토큰 추출
@@ -102,5 +134,25 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         return null;
+    }
+
+    private <T> T trace(String spanName, HttpServletRequest request, Supplier<T> supplier) {
+        Span span = startSpan(spanName, request);
+        try (Tracer.SpanInScope ignored = tracer.withSpan(span)) {
+            return supplier.get();
+        } catch (RuntimeException e) {
+            span.error(e);
+            throw e;
+        } finally {
+            span.end();
+        }
+    }
+
+    private Span startSpan(String spanName, HttpServletRequest request) {
+        return tracer.nextSpan()
+                .name(spanName)
+                .tag("http.method", request.getMethod())
+                .tag("http.route", request.getRequestURI())
+                .start();
     }
 }
