@@ -7,6 +7,7 @@ import com.imyme.mine.domain.auth.entity.User;
 import com.imyme.mine.domain.auth.repository.UserRepository;
 import com.imyme.mine.domain.auth.service.OAuthService;
 import com.imyme.mine.global.common.response.ApiResponse;
+import com.imyme.mine.global.tracing.TraceSupport;
 import io.swagger.v3.oas.annotations.Hidden;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -40,6 +41,7 @@ public class E2EAuthController {
 
     private final UserRepository userRepository;
     private final OAuthService oauthService;
+    private final TraceSupport traceSupport;
 
     /**
      * E2E 테스트 유저 생성 (또는 조회)
@@ -174,21 +176,26 @@ public class E2EAuthController {
         String oauthId = "e2e_load_test_user_" + vuId;
         log.info("E2E load test login attempt: vuId={}, deviceUuid={}", vuId, request.deviceUuid());
 
-        User testUser = userRepository
-            .findByOauthIdAndOauthProvider(oauthId, OAuthProviderType.KAKAO)
-            .orElseGet(() -> {
-                User newUser = User.builder()
-                    .oauthId(oauthId)
-                    .oauthProvider(OAuthProviderType.KAKAO)
-                    .nickname("부하테스터" + vuId)
-                    .build();
-                userRepository.save(newUser);
-                log.info("E2E load test user auto-created: vuId={}, userId={}", vuId, newUser.getId());
-                return newUser;
-            });
+        OAuthLoginResponse response = traceSupport.trace("endpoint.e2e.login.post.service", () -> {
+            User testUser = traceSupport.trace("e2e.login.user.find-or-create", () -> userRepository
+                .findByOauthIdAndOauthProvider(oauthId, OAuthProviderType.KAKAO)
+                .orElseGet(() -> {
+                    User newUser = User.builder()
+                        .oauthId(oauthId)
+                        .oauthProvider(OAuthProviderType.KAKAO)
+                        .nickname("부하테스터" + vuId)
+                        .build();
+                    userRepository.save(newUser);
+                    log.info("E2E load test user auto-created: vuId={}, userId={}", vuId, newUser.getId());
+                    return newUser;
+                }));
 
-        OAuthLoginResponse response = oauthService.login(testUser, request.deviceUuid(), false);
-        log.info("E2E load test login successful: vuId={}, userId={}", vuId, testUser.getId());
+            OAuthLoginResponse loginResponse = traceSupport.trace(
+                "e2e.login.oauth-service.login",
+                () -> oauthService.login(testUser, request.deviceUuid(), false));
+            log.info("E2E load test login successful: vuId={}, userId={}", vuId, testUser.getId());
+            return loginResponse;
+        });
 
         return ApiResponse.success(response, "E2E 부하 테스트 로그인 성공");
     }

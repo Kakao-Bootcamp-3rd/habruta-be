@@ -2,6 +2,7 @@ package com.imyme.mine.domain.category.service;
 
 import com.imyme.mine.domain.category.dto.CategoryResponse;
 import com.imyme.mine.domain.category.repository.CategoryRepository;
+import com.imyme.mine.global.tracing.TraceSupport;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -15,6 +16,7 @@ import java.util.List;
 public class CategoryService {
 
     private final CategoryRepository categoryRepository;
+    private final TraceSupport traceSupport;
 
     /**
      * 카테고리 목록 조회 (캐싱 적용)
@@ -25,12 +27,16 @@ public class CategoryService {
     @Cacheable(value = "categories", key = "#isActive != null ? #isActive : 'all'", sync = true)
     public List<CategoryResponse> getCategories(Boolean isActive) {
         if (isActive == null) {
-            return categoryRepository.findAllByOrderByDisplayOrderAsc().stream()
+            return traceSupport.trace("category.repository.find-all", categoryRepository::findAllByOrderByDisplayOrderAsc)
+                    .stream()
+                    .map(CategoryResponse::from)
+                    .toList();
+        }
+        return traceSupport.trace(
+                "category.repository.find-by-active",
+                () -> categoryRepository.findAllByIsActiveOrderByDisplayOrderAsc(isActive))
+                .stream()
                 .map(CategoryResponse::from)
                 .toList();
-        }
-        return categoryRepository.findAllByIsActiveOrderByDisplayOrderAsc(isActive).stream()
-            .map(CategoryResponse::from)
-            .toList();
     }
 }

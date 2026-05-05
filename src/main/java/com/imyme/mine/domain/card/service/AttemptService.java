@@ -25,6 +25,7 @@ import com.imyme.mine.global.config.S3Properties;
 import com.imyme.mine.global.config.SoloMqProperties;
 import com.imyme.mine.global.error.BusinessException;
 import com.imyme.mine.global.error.ErrorCode;
+import com.imyme.mine.global.tracing.TraceSupport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
@@ -61,6 +62,7 @@ public class AttemptService {
     private final AttemptSttService attemptSttService;
     private final SoloMqProperties soloMqProperties;
     private final SoloMqPublisher soloMqPublisher;
+    private final TraceSupport traceSupport;
 
     private static final int MAX_ATTEMPTS_PER_CARD = 5;
 
@@ -68,17 +70,19 @@ public class AttemptService {
     public AttemptCreateResponse createAttempt(Long userId, Long cardId, AttemptCreateRequest request) {
         log.debug("시도 생성 시작 - userId: {}, cardId: {}", userId, cardId);
 
-        Card card = cardRepository.findByIdAndUserId(cardId, userId)
+        Card card = traceSupport.trace("attempt.create.card.find", () -> cardRepository.findByIdAndUserId(cardId, userId))
             .orElseThrow(() -> new BusinessException(ErrorCode.CARD_NOT_FOUND));
 
         // FAILED/EXPIRED는 카운트에서 제외 (재시도 가능하도록)
         List<AttemptStatus> excludedStatuses = List.of(AttemptStatus.FAILED, AttemptStatus.EXPIRED);
-        long attemptCount = cardAttemptRepository.countByCardIdAndStatusNotIn(card.getId(), excludedStatuses);
+        long attemptCount = traceSupport.trace(
+            "attempt.create.attempt.count",
+            () -> cardAttemptRepository.countByCardIdAndStatusNotIn(card.getId(), excludedStatuses));
         if (attemptCount >= MAX_ATTEMPTS_PER_CARD) {
             throw new BusinessException(ErrorCode.MAX_ATTEMPTS_EXCEEDED);
         }
 
-        Short nextAttemptNo = calculateNextAttemptNo(card.getId());
+        Short nextAttemptNo = traceSupport.trace("attempt.create.next-attempt-no", () -> calculateNextAttemptNo(card.getId()));
 
         CardAttempt attempt = CardAttempt.builder()
             .card(card)
@@ -87,7 +91,7 @@ public class AttemptService {
             .durationSeconds(request.durationSeconds())
             .build();
 
-        CardAttempt savedAttempt = cardAttemptRepository.save(attempt);
+        CardAttempt savedAttempt = traceSupport.trace("attempt.create.attempt.save", () -> cardAttemptRepository.save(attempt));
 
         LocalDateTime expiresAt = LocalDateTime.now().plus(Duration.ofMinutes(attemptProperties.getUploadExpirationMinutes()));
 
@@ -117,14 +121,16 @@ public class AttemptService {
         log.debug("업로드 완료 처리 시작 - userId: {}, cardId: {}, attemptId: {}", userId, cardId, attemptId);
 
         // 1단계: 트랜잭션 내에서 검증 및 상태 업데이트만 수행 (프록시 호출로 @Transactional 보장)
-        ValidatedAttempt validated = attemptUploadService.markAttemptAsUploaded(userId, cardId, attemptId, request);
+        ValidatedAttempt validated = traceSupport.trace(
+            "attempt.upload.mark-uploaded",
+            () -> attemptUploadService.markAttemptAsUploaded(userId, cardId, attemptId, request));
         Card card = validated.card();
 
         // 2단계: 트랜잭션 외부에서 외부 HTTP 호출 수행
-        processAfterUpload(attemptId, card, request.objectKey());
+        traceSupport.trace("attempt.upload.process-after-upload", () -> processAfterUpload(attemptId, card, request.objectKey()));
 
         // 3단계: 최종 상태 조회 및 응답 반환
-        CardAttempt finalAttempt = cardAttemptRepository.findById(attemptId)
+        CardAttempt finalAttempt = traceSupport.trace("attempt.upload.final-attempt.find", () -> cardAttemptRepository.findById(attemptId))
             .orElseThrow(() -> new BusinessException(ErrorCode.ATTEMPT_NOT_FOUND));
 
         log.info("업로드 완료 처리 완료 - attemptId: {}, status: {}", attemptId, finalAttempt.getStatus());
@@ -142,7 +148,7 @@ public class AttemptService {
             log.debug("STT 처리 시작 - attemptId: {}", attemptId);
 
             // 읽기용 Presigned URL 생성 (AI 서버가 S3에서 다운로드 가능)
-            String readPresignedUrl = generateReadPresignedUrl(objectKey);
+            String readPresignedUrl = traceSupport.trace("attempt.upload.s3.presign-read", () -> generateReadPresignedUrl(objectKey));
             log.debug("읽기용 Presigned URL 생성 완료 - attemptId: {}", attemptId);
 
             if (soloMqProperties.isEnabled()) {
@@ -155,12 +161,12 @@ public class AttemptService {
                     .audioUrl(readPresignedUrl)
                     .timestamp(System.currentTimeMillis())
                     .build();
-                soloMqPublisher.publishSttRequest(payload);
+                traceSupport.trace("attempt.upload.mq.publish-stt", () -> soloMqPublisher.publishSttRequest(payload));
             } else {
                 // HTTP 경로: 기존 동기 STT 호출
-                String sttText = aiServerClient.transcribe(readPresignedUrl);
-                attemptSttService.recordSttSuccess(attemptId, sttText);
-                publishSoloAnalysisEvent(attemptId, card, sttText);
+                String sttText = traceSupport.trace("attempt.upload.ai.transcribe", () -> aiServerClient.transcribe(readPresignedUrl));
+                traceSupport.trace("attempt.upload.stt.record-success", () -> attemptSttService.recordSttSuccess(attemptId, sttText));
+                traceSupport.trace("attempt.upload.event.publish-solo-analysis", () -> publishSoloAnalysisEvent(attemptId, card, sttText));
             }
 
         } catch (BusinessException e) {

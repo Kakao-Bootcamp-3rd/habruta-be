@@ -13,6 +13,7 @@ import com.imyme.mine.global.error.BusinessException;
 import com.imyme.mine.global.error.ErrorCode;
 import com.imyme.mine.global.security.jwt.JwtTokenProvider;
 import com.imyme.mine.global.security.util.TokenHasher;
+import com.imyme.mine.global.tracing.TraceSupport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -38,6 +39,7 @@ public class OAuthService {
     private final NicknameService nicknameService;
     private final JwtTokenProvider jwtTokenProvider;
     private final JwtProperties jwtProperties;
+    private final TraceSupport traceSupport;
 
     private static final int MAX_RETRIES = 100;
     private final SecureRandom secureRandom = new SecureRandom();
@@ -71,37 +73,37 @@ public class OAuthService {
 
     // 공통 로그인 로직 (토큰 발급)
     public OAuthLoginResponse login(User user, String deviceUuid, boolean isNewUser) {
-        user.updateLastLogin();
+        traceSupport.trace("oauth.login.user.update-last-login", user::updateLastLogin);
 
-        Device device = deviceRepository.findByDeviceUuid(deviceUuid)
+        Device device = traceSupport.trace("oauth.login.device.find-or-create", () -> deviceRepository.findByDeviceUuid(deviceUuid)
             .orElseGet(() -> deviceRepository.saveAndFlush(Device.builder()
                 .deviceUuid(deviceUuid)
                 .agentType(AgentType.CHROME) // TODO: 추후 헤더 파싱 필요
                 .platformType(PlatformType.MOBILE_WEB) // TODO: 추후 헤더 파싱 필요
-                .build()));
+                .build())));
 
-        device.login(user);
+        traceSupport.trace("oauth.login.device.login", () -> device.login(user));
 
         // JWT 토큰 생성 (Access Token + Refresh Token)
-        String accessToken = jwtTokenProvider.generateAccessToken(user.getId());
-        String refreshToken = jwtTokenProvider.generateRefreshToken(user.getId());
+        String accessToken = traceSupport.trace("oauth.login.jwt.generate-access", () -> jwtTokenProvider.generateAccessToken(user.getId()));
+        String refreshToken = traceSupport.trace("oauth.login.jwt.generate-refresh", () -> jwtTokenProvider.generateRefreshToken(user.getId()));
 
         long expiresIn = jwtProperties.getAccessTokenExpiration() / 1000;
 
         LocalDateTime expiresAt = LocalDateTime.now()
                 .plusSeconds(jwtProperties.getRefreshTokenExpiration() / 1000);
 
-        String hashedRefreshToken = TokenHasher.hash(refreshToken);
+        String hashedRefreshToken = traceSupport.trace("oauth.login.refresh-token.hash", () -> TokenHasher.hash(refreshToken));
 
         try {
-            UserSession userSession = userSessionRepository
-                .findByUserIdAndDeviceUuid(user.getId(), deviceUuid)
-                .orElse(null);
+            UserSession userSession = traceSupport.trace(
+                "oauth.login.session.find",
+                () -> userSessionRepository.findByUserIdAndDeviceUuid(user.getId(), deviceUuid).orElse(null));
 
             if (userSession != null) {
                 // 이미 있으면 업데이트 (기존 로직 동일)
                 log.info("기존 세션 재사용 - sessionId: {}", userSession.getId());
-                userSession.rotateRefreshToken(hashedRefreshToken, expiresAt);
+                traceSupport.trace("oauth.login.session.rotate-refresh-token", () -> userSession.rotateRefreshToken(hashedRefreshToken, expiresAt));
             } else {
                 // 없으면 생성 (INSERT)
                 log.info("새 세션 생성 시도 - userId: {}, deviceUuid: {}", user.getId(), deviceUuid);
@@ -112,15 +114,16 @@ public class OAuthService {
                     .expiresAt(expiresAt)
                     .build();
 
-                userSessionRepository.save(newSession); // 여기서 중복 발생 시 예외 터짐
+                traceSupport.trace("oauth.login.session.save", () -> userSessionRepository.save(newSession)); // 여기서 중복 발생 시 예외 터짐
             }
         } catch (DataIntegrityViolationException e) {
             log.warn("세션 생성 중 동시성 경합 발생! 업데이트로 전환합니다. userId={}", user.getId());
-            UserSession existingSession = userSessionRepository
-                .findByUserIdAndDeviceUuid(user.getId(), deviceUuid)
-                .orElseThrow(() -> new BusinessException(ErrorCode.SESSION_CREATION_FAILED));
+            UserSession existingSession = traceSupport.trace(
+                "oauth.login.session.find-after-conflict",
+                () -> userSessionRepository.findByUserIdAndDeviceUuid(user.getId(), deviceUuid)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.SESSION_CREATION_FAILED)));
 
-            existingSession.rotateRefreshToken(hashedRefreshToken, expiresAt);
+            traceSupport.trace("oauth.login.session.rotate-after-conflict", () -> existingSession.rotateRefreshToken(hashedRefreshToken, expiresAt));
         }
 
         return OAuthLoginResponse.builder()

@@ -10,6 +10,7 @@ import com.imyme.mine.domain.card.service.CardService;
 import com.imyme.mine.global.common.response.ApiResponse;
 import com.imyme.mine.global.security.UserPrincipal;
 import com.imyme.mine.global.security.annotation.CurrentUser;
+import com.imyme.mine.global.tracing.TraceSupport;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -44,6 +45,7 @@ import java.util.List;
 public class CardController {
 
     private final CardService cardService;
+    private final TraceSupport traceSupport;
 
     @Operation(
         summary = "학습 카드 생성",
@@ -75,7 +77,7 @@ public class CardController {
         Long userId = userPrincipal.getId();
         log.info("POST /cards - userId: {}", userId);
 
-        CardResponse response = cardService.createCard(userId, request);
+        CardResponse response = traceSupport.trace("endpoint.cards.post.service", () -> cardService.createCard(userId, request));
 
         return ApiResponse.success(response, "카드가 생성되었습니다.");
     }

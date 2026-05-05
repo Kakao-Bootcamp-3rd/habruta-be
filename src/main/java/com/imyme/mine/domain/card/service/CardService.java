@@ -20,6 +20,7 @@ import com.imyme.mine.domain.notification.entity.NotificationType;
 import com.imyme.mine.domain.notification.service.NotificationCreatorService;
 import com.imyme.mine.global.error.BusinessException;
 import com.imyme.mine.global.error.ErrorCode;
+import com.imyme.mine.global.tracing.TraceSupport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -43,6 +44,7 @@ public class CardService {
     private final CategoryRepository categoryRepository;
     private final KeywordRepository keywordRepository;
     private final NotificationCreatorService notificationCreatorService;
+    private final TraceSupport traceSupport;
 
     private static final int DEFAULT_LIMIT = 20;
     private static final int MAX_LIMIT = 100;
@@ -52,15 +54,21 @@ public class CardService {
         log.debug("카드 생성 시작 - userId: {}, categoryId: {}, keywordId: {}",
             userId, request.categoryId(), request.keywordId());
 
-        if (!keywordRepository.existsByIdAndCategoryId(request.keywordId(), request.categoryId())) {
+        if (!traceSupport.trace(
+            "card.create.keyword.exists",
+            () -> keywordRepository.existsByIdAndCategoryId(request.keywordId(), request.categoryId()))) {
             throw new BusinessException(ErrorCode.KEYWORD_NOT_FOUND);
         }
 
-        User user = userRepository.findById(userId)
+        User user = traceSupport.trace("card.create.user.find", () -> userRepository.findById(userId))
             .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
-        Category category = categoryRepository.getReferenceById(request.categoryId());
-        Keyword keyword = keywordRepository.getReferenceById(request.keywordId());
+        Category category = traceSupport.trace(
+            "card.create.category.reference",
+            () -> categoryRepository.getReferenceById(request.categoryId()));
+        Keyword keyword = traceSupport.trace(
+            "card.create.keyword.reference",
+            () -> keywordRepository.getReferenceById(request.keywordId()));
 
         Card card = Card.builder()
             .user(user)
@@ -69,22 +77,22 @@ public class CardService {
             .title(request.title())
             .build();
 
-        Card savedCard = cardRepository.save(card);
+        Card savedCard = traceSupport.trace("card.create.card.save", () -> cardRepository.save(card));
 
         int prevLevel = user.getLevel();
-        user.incrementTotalCardCount();
+        traceSupport.trace("card.create.user.increment-card-count", user::incrementTotalCardCount);
 
         log.info("카드 생성 완료 - cardId: {}, userId: {}", savedCard.getId(), userId);
 
         if (user.getLevel() > prevLevel) {
-            notificationCreatorService.create(
+            traceSupport.trace("card.create.notification.create", () -> notificationCreatorService.create(
                 userId,
                 NotificationType.LEVEL_UP,
                 "레벨업!",
                 "Lv." + user.getLevel() + " 달성! 계속 성장하고 있어요.",
                 null,
                 null
-            );
+            ));
         }
 
         return CardResponse.from(savedCard);
