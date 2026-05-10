@@ -11,14 +11,23 @@ public class TracingConfig {
 
     @Bean
     public SpanHandler hostIpSpanHandler(HostInfoProvider hostInfoProvider) {
-        return new SpanHandler() {
-            @Override
-            public boolean begin(TraceContext context, MutableSpan span, TraceContext parent) {
-                if (parent == null) {
-                    span.tag("host.ip", hostInfoProvider.getPrivateIp());
-                }
-                return true;
+        return new HostIpSpanHandler(hostInfoProvider.getPrivateIp());
+    }
+
+    private static class HostIpSpanHandler extends SpanHandler {
+
+        private final String hostIp;
+
+        HostIpSpanHandler(String hostIp) {
+            this.hostIp = hostIp;
+        }
+
+        @Override
+        public boolean begin(TraceContext context, MutableSpan span, TraceContext parent) {
+            if (parent == null) {
+                span.tag("host.ip", hostIp);
             }
-        };
+            return true;
+        }
     }
 }
