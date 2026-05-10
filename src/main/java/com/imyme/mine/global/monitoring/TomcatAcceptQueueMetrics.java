@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.OptionalInt;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -25,6 +26,7 @@ public class TomcatAcceptQueueMetrics {
     private final List<Path> tcpTables;
     private final AtomicInteger scrapeError = new AtomicInteger();
 
+    @Autowired
     public TomcatAcceptQueueMetrics(
             MeterRegistry meterRegistry,
             @Value("${server.port:8080}") int serverPort
