@@ -15,6 +15,7 @@ grafana/data/
 # ==========================================
 k6-results/
 *.json
+!grafana/dashboards/network-dashboard.json
 
 # ==========================================
 # 로그 파일

@@ -54,18 +54,24 @@ public class CardService {
         log.debug("카드 생성 시작 - userId: {}, categoryId: {}, keywordId: {}",
             userId, request.categoryId(), request.keywordId());
 
+
+        // query 1
         if (!traceSupport.trace(
             "card.create.keyword.exists",
             () -> keywordRepository.existsByIdAndCategoryId(request.keywordId(), request.categoryId()))) {
             throw new BusinessException(ErrorCode.KEYWORD_NOT_FOUND);
         }
 
+        // query 2
         User user = traceSupport.trace("card.create.user.find", () -> userRepository.findById(userId))
             .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
+        // query x : FK용 프록시만 만든다.
         Category category = traceSupport.trace(
             "card.create.category.reference",
             () -> categoryRepository.getReferenceById(request.categoryId()));
+
+        // query x : FK용 프록시만 만든다.
         Keyword keyword = traceSupport.trace(
             "card.create.keyword.reference",
             () -> keywordRepository.getReferenceById(request.keywordId()));
@@ -77,13 +83,17 @@ public class CardService {
             .title(request.title())
             .build();
 
+        // query 3
         Card savedCard = traceSupport.trace("card.create.card.save", () -> cardRepository.save(card));
 
+
+        // query 4
         int prevLevel = user.getLevel();
         traceSupport.trace("card.create.user.increment-card-count", user::incrementTotalCardCount);
 
         log.info("카드 생성 완료 - cardId: {}, userId: {}", savedCard.getId(), userId);
 
+        // query 5,6
         if (user.getLevel() > prevLevel) {
             traceSupport.trace("card.create.notification.create", () -> notificationCreatorService.create(
                 userId,

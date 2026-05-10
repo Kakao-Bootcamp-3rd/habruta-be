@@ -81,7 +81,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 Long userId = trace("jwt.get-user-id", request, () -> jwtTokenProvider.getUserIdFromToken(token));
 
                 // UserSession 존재 여부 확인을 통한 보안 강화 (로그아웃 여부 체크)
-                // TODO : 트래픽이 높아지면 Redis 방식(블랙리스트 방식)으로 마이그레이션 진행
+                // 2.46s 지연 발생
                 if (!trace("jwt.session.exists", request, () -> userSessionRepository.existsByUserId(userId))) {
                     log.warn("Access denied: No active session found for user {}", userId);
                     request.setAttribute("exception", ErrorCode.SESSION_EXPIRED.getCode());
