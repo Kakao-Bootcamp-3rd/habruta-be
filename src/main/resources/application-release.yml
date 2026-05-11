@@ -81,6 +81,9 @@ logging:
         com.imyme.mine: INFO
         org.springframework.security: INFO
         org.hibernate.SQL: WARN
+    pattern:
+        console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId:-},%X{spanId:-}] %logger{36} - %msg%n"
+        file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId:-},%X{spanId:-}] %logger{36} - %msg%n"
 
 solo:
     mq:
