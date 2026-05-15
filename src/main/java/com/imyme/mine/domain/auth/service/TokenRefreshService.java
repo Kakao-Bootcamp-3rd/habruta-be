@@ -82,7 +82,7 @@ public class TokenRefreshService {
         // 정상 검증 완료 → 새 토큰 발급 (RTR 적용)
         User user = userSession.getUser();
 
-        String newAccessToken = jwtTokenProvider.generateAccessToken(user.getId());
+        String newAccessToken = jwtTokenProvider.generateAccessToken(user.getId(), user.getRole().name());
         String newRawRefreshToken = jwtTokenProvider.generateRefreshToken(user.getId());
         long expiresIn = jwtProperties.getAccessTokenExpiration() / 1000;
         LocalDateTime newExpiresAt = LocalDateTime.now()
