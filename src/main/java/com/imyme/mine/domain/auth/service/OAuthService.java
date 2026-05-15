@@ -86,7 +86,8 @@ public class OAuthService {
         traceSupport.trace("oauth.login.device.login", () -> device.login(user));
 
         // JWT 토큰 생성 (Access Token + Refresh Token)
-        String accessToken = traceSupport.trace("oauth.login.jwt.generate-access", () -> jwtTokenProvider.generateAccessToken(user.getId()));
+        String accessToken = traceSupport.trace("oauth.login.jwt.generate-access", () ->
+            jwtTokenProvider.generateAccessToken(user.getId(), user.getRole().name()));
         String refreshToken = traceSupport.trace("oauth.login.jwt.generate-refresh", () -> jwtTokenProvider.generateRefreshToken(user.getId()));
 
         long expiresIn = jwtProperties.getAccessTokenExpiration() / 1000;
