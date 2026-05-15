@@ -30,6 +30,7 @@ public class TokenRefreshService {
     private final UserSessionRepository userSessionRepository;
     private final JwtProperties jwtProperties;
     private final TokenTheftDetector tokenTheftDetector;
+    private final AuthSessionCacheService authSessionCacheService;
 
     @Transactional
     public TokenRefreshResponse refreshTokens(TokenRefreshRequest request) {
@@ -68,6 +69,7 @@ public class TokenRefreshService {
             // 만료된 토큰으로 갱신 시도 → 세션 삭제 후 예외 발생
             Long userId = userSession.getUser().getId();
             userSessionRepository.delete(userSession);
+            authSessionCacheService.refreshAfterCommit(userId);
 
             tokenTheftDetector.detectSuspiciousTokenUsage(
                     rawRefreshToken,
@@ -89,6 +91,7 @@ public class TokenRefreshService {
         // 7새 Refresh Token을 해싱하여 DB 업데이트
         String hashedNewRefreshToken = TokenHasher.hash(newRawRefreshToken);
         userSession.rotateRefreshToken(hashedNewRefreshToken, newExpiresAt);
+        authSessionCacheService.markActiveAfterCommit(user.getId(), newExpiresAt);
 
         log.info("Token refreshed successfully for user: {}", user.getId());
 

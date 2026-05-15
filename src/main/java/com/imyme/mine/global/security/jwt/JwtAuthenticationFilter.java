@@ -2,7 +2,7 @@ package com.imyme.mine.global.security.jwt;
 
 import com.imyme.mine.domain.auth.entity.User;
 import com.imyme.mine.domain.auth.repository.UserRepository;
-import com.imyme.mine.domain.auth.repository.UserSessionRepository;
+import com.imyme.mine.domain.auth.service.AuthSessionCacheService;
 import com.imyme.mine.global.error.ErrorCode;
 import com.imyme.mine.global.security.UserPrincipal;
 import io.jsonwebtoken.ExpiredJwtException;
@@ -37,7 +37,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider jwtTokenProvider;
     private final UserRepository userRepository;
-    private final UserSessionRepository userSessionRepository;
+    private final AuthSessionCacheService authSessionCacheService;
     private final Tracer tracer;
 
     // JWT 토큰을 추출하고 검증하여 인증 정보 설정
@@ -82,7 +82,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                 // UserSession 존재 여부 확인을 통한 보안 강화 (로그아웃 여부 체크)
                 // 2.46s 지연 발생
-                if (!trace("jwt.session.exists", request, () -> userSessionRepository.existsByUserId(userId))) {
+                if (!trace("jwt.session.exists", request, () -> authSessionCacheService.hasActiveSession(userId))) {
                     log.warn("Access denied: No active session found for user {}", userId);
                     request.setAttribute("exception", ErrorCode.SESSION_EXPIRED.getCode());
                     filterChain.doFilter(request, response);
