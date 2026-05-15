@@ -48,15 +48,6 @@ public interface UserSessionRepository extends JpaRepository<UserSession, Long> 
     @Query("DELETE FROM UserSession s WHERE s.device.id = :deviceId")
     void deleteAllByDeviceId(@Param("deviceId") Long deviceId);
 
-    // 사용자의 활성 세션 존재 여부 확인 (로그아웃 여부 체크용)
-    // input : userId
-    // output : boolean
-    /*
-    userId가 파라미터로들어온 id를 가진 유저를 가진 유저 세션 테이블의 행들으 카운트를 셌는데 0보다 크면 true
-     */
-    @Query("SELECT CASE WHEN COUNT(s) > 0 THEN true ELSE false END FROM UserSession s WHERE s.user.id = :userId")   // JPQL
-    boolean existsByUserId(@Param("userId") Long userId);
-
     // 만료된 세션 일괄 삭제 (배치용)
     @Modifying
     @Transactional
