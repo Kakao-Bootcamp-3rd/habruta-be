@@ -4,6 +4,7 @@ import com.imyme.mine.domain.auth.entity.User;
 import com.imyme.mine.domain.auth.repository.DeviceRepository;
 import com.imyme.mine.domain.auth.repository.UserRepository;
 import com.imyme.mine.domain.auth.repository.UserSessionRepository;
+import com.imyme.mine.domain.auth.service.AuthSessionCacheService;
 import com.imyme.mine.domain.forbidden.entity.ForbiddenWordType;
 import com.imyme.mine.domain.forbidden.service.ForbiddenWordService;
 import com.imyme.mine.domain.user.dto.NicknameCheckResponse;
@@ -33,6 +34,7 @@ public class UserService {
     private final DeviceRepository deviceRepository;
     private final ForbiddenWordService forbiddenWordService;
     private final ProfileImageService profileImageService;
+    private final AuthSessionCacheService authSessionCacheService;
 
     /**
      * 회원 탈퇴 처리
@@ -54,6 +56,7 @@ public class UserService {
         }
 
         int deletedSessions = userSessionRepository.deleteAllByUserId(userId);
+        authSessionCacheService.evictAfterCommit(userId);
         log.info("삭제된 세션 수: {}", deletedSessions);
 
         deviceRepository.unlinkAllByUserId(userId);
