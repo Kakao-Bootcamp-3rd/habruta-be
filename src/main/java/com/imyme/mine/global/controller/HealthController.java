@@ -20,9 +20,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class HealthController {
 
     private static final String SESSION_EXISTS_WARMUP_SQL = """
-            select case when count(us1_0.id)>0 then true else false end
-            from user_sessions us1_0
-            where us1_0.user_id=?
+            select exists (
+                select 1
+                from user_sessions us1_0
+                where us1_0.user_id=?
+            )
             """;
 
     private final JdbcTemplate jdbcTemplate;

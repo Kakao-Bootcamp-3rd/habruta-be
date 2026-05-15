@@ -40,14 +40,13 @@ public interface UserSessionRepository extends JpaRepository<UserSession, Long> 
     @Query("SELECT s FROM UserSession s WHERE s.user.id = :userId AND s.device.deviceUuid = :deviceUuid")
     Optional<UserSession> findByUserIdAndDeviceUuid(@Param("userId") Long userId, @Param("deviceUuid") String deviceUuid);
 
+    @Query("SELECT MAX(s.expiresAt) FROM UserSession s WHERE s.user.id = :userId")
+    Optional<LocalDateTime> findMaxExpiresAtByUserId(@Param("userId") Long userId);
+
     // deviceId로 모든 세션 삭제 (기기 삭제 시)
     @Modifying
     @Query("DELETE FROM UserSession s WHERE s.device.id = :deviceId")
     void deleteAllByDeviceId(@Param("deviceId") Long deviceId);
-
-    // 사용자의 활성 세션 존재 여부 확인 (로그아웃 여부 체크용)
-    @Query("SELECT CASE WHEN COUNT(s) > 0 THEN true ELSE false END FROM UserSession s WHERE s.user.id = :userId")
-    boolean existsByUserId(@Param("userId") Long userId);
 
     // 만료된 세션 일괄 삭제 (배치용)
     @Modifying

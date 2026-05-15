@@ -40,6 +40,7 @@ public class OAuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final JwtProperties jwtProperties;
     private final TraceSupport traceSupport;
+    private final AuthSessionCacheService authSessionCacheService;
 
     private static final int MAX_RETRIES = 100;
     private final SecureRandom secureRandom = new SecureRandom();
@@ -125,6 +126,8 @@ public class OAuthService {
 
             traceSupport.trace("oauth.login.session.rotate-after-conflict", () -> existingSession.rotateRefreshToken(hashedRefreshToken, expiresAt));
         }
+
+        authSessionCacheService.markActiveAfterCommit(user.getId(), expiresAt);
 
         return OAuthLoginResponse.builder()
             .accessToken(accessToken)

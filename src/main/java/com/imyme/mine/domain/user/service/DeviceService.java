@@ -7,6 +7,7 @@ import com.imyme.mine.domain.auth.entity.User;
 import com.imyme.mine.domain.auth.repository.DeviceRepository;
 import com.imyme.mine.domain.auth.repository.UserRepository;
 import com.imyme.mine.domain.auth.repository.UserSessionRepository;
+import com.imyme.mine.domain.auth.service.AuthSessionCacheService;
 import com.imyme.mine.domain.user.dto.RegisterDeviceRequest;
 import com.imyme.mine.domain.user.dto.RegisterDeviceResponse;
 import com.imyme.mine.global.error.BusinessException;
@@ -29,6 +30,7 @@ public class DeviceService {
     private final DeviceRepository deviceRepository;
     private final UserRepository userRepository;
     private final UserSessionRepository userSessionRepository;
+    private final AuthSessionCacheService authSessionCacheService;
 
     /**
      * 기기 등록 또는 업데이트 (Upsert)
@@ -99,6 +101,7 @@ public class DeviceService {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
         userSessionRepository.deleteAllByDeviceId(device.getId());
+        authSessionCacheService.refreshAfterCommit(userId);
         deviceRepository.softDeleteByDeviceUuid(deviceUuid);
     }
 
