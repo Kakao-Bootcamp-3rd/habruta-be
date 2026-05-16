@@ -1,0 +1,27 @@
+#!/bin/sh
+
+commit_msg_file="$1"
+first_line="$(sed -n '1p' "$commit_msg_file")"
+
+valid_types="feat|fix|perf|refactor|test|docs|chore|ci|build|style|revert"
+pattern="^($valid_types)(\\([^)]+\\))?[[:space:]]?: .+위해, .+"
+
+if printf '%s\n' "$first_line" | grep -Eq "$pattern"; then
+  exit 0
+fi
+
+cat <<'EOF'
+커밋 메시지 형식이 맞지 않습니다.
+
+형식:
+  type: 이유를 해결하기 위해, 실제 변경 행위
+
+예시:
+  fix: 로그아웃한 기기에서 API 요청이 성공하는 문제를 해결하기 위해, JWT에 deviceUuid 추가
+  perf: 인증 필터의 DB 조회 지연을 줄이기 위해, JWT claim 기반 Principal 생성 적용
+
+허용 type:
+  feat, fix, perf, refactor, test, docs, chore, ci, build, style, revert
+EOF
+
+exit 1
