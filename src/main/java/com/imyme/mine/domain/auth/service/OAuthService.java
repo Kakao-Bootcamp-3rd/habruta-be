@@ -87,7 +87,7 @@ public class OAuthService {
 
         // JWT 토큰 생성 (Access Token + Refresh Token)
         String accessToken = traceSupport.trace("oauth.login.jwt.generate-access", () ->
-            jwtTokenProvider.generateAccessToken(user.getId(), user.getRole().name()));
+            jwtTokenProvider.generateAccessToken(user.getId(), user.getRole().name(), deviceUuid));
         String refreshToken = traceSupport.trace("oauth.login.jwt.generate-refresh", () -> jwtTokenProvider.generateRefreshToken(user.getId()));
 
         long expiresIn = jwtProperties.getAccessTokenExpiration() / 1000;
@@ -128,7 +128,7 @@ public class OAuthService {
             traceSupport.trace("oauth.login.session.rotate-after-conflict", () -> existingSession.rotateRefreshToken(hashedRefreshToken, expiresAt));
         }
 
-        authSessionCacheService.markActiveAfterCommit(user.getId(), expiresAt);
+        authSessionCacheService.markActiveAfterCommit(user.getId(), deviceUuid, expiresAt);
 
         return OAuthLoginResponse.builder()
             .accessToken(accessToken)

@@ -80,10 +80,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 // 토큰에서 사용자 ID 추출
                 Long userId = trace("jwt.get-user-id", request, () -> jwtTokenProvider.getUserIdFromToken(token));
                 String role = trace("jwt.get-role", request, () -> jwtTokenProvider.getRoleFromToken(token));
+                String deviceUuid = trace("jwt.get-device-uuid", request, () -> jwtTokenProvider.getDeviceUuidFromToken(token));
 
                 // UserSession 존재 여부 확인을 통한 보안 강화 (로그아웃 여부 체크)
                 // 2.46s 지연 발생
-                if (!trace("jwt.session.exists", request, () -> authSessionCacheService.hasActiveSession(userId))) {
+                if (!trace("jwt.session.exists", request, () -> hasActiveSession(userId, deviceUuid))) {
                     log.warn("Access denied: No active session found for user {}", userId);
                     request.setAttribute("exception", ErrorCode.SESSION_EXPIRED.getCode());
                     filterChain.doFilter(request, response);
@@ -127,6 +128,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         return false;
+    }
+
+    private boolean hasActiveSession(Long userId, String deviceUuid) {
+        if (StringUtils.hasText(deviceUuid)) {
+            return authSessionCacheService.hasActiveSession(userId, deviceUuid);
+        }
+
+        return authSessionCacheService.hasActiveSession(userId);
     }
 
     // HTTP 요청의 Authorization 헤더에서 Bearer 토큰 추출

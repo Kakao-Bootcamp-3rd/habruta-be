@@ -22,6 +22,7 @@ import java.util.Date;
 public class JwtTokenProvider {
 
     private static final String ROLE_CLAIM = "role";
+    private static final String DEVICE_UUID_CLAIM = "deviceUuid";
 
     private final JwtProperties jwtProperties;
 
@@ -37,6 +38,11 @@ public class JwtTokenProvider {
 
     // Access Token 생성
     public String generateAccessToken(Long userId, String role) {
+        return generateAccessToken(userId, role, null);
+    }
+
+    // Access Token 생성
+    public String generateAccessToken(Long userId, String role, String deviceUuid) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + jwtProperties.getAccessTokenExpiration());
 
@@ -47,6 +53,10 @@ public class JwtTokenProvider {
 
         if (role != null && !role.isBlank()) {
             builder.claim(ROLE_CLAIM, role);
+        }
+
+        if (deviceUuid != null && !deviceUuid.isBlank()) {
+            builder.claim(DEVICE_UUID_CLAIM, deviceUuid);
         }
 
         return builder.signWith(getSigningKey(), Jwts.SIG.HS256).compact();
@@ -73,6 +83,11 @@ public class JwtTokenProvider {
     // 토큰에서 사용자 권한 추출
     public String getRoleFromToken(String token) {
         return getClaims(token).get(ROLE_CLAIM, String.class);
+    }
+
+    // 토큰에서 기기 UUID 추출
+    public String getDeviceUuidFromToken(String token) {
+        return getClaims(token).get(DEVICE_UUID_CLAIM, String.class);
     }
 
     //  토큰 유효성 검증

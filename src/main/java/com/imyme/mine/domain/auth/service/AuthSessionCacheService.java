@@ -10,6 +10,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Slf4j
 @Service
@@ -45,8 +46,36 @@ public class AuthSessionCacheService {
             .orElse(false);
     }
 
+    public boolean hasActiveSession(Long userId, String deviceUuid) {
+        String key = activeSessionKey(userId, deviceUuid);
+
+        try {
+            if (Boolean.TRUE.equals(redisTemplate.hasKey(key))) {
+                return true;
+            }
+        } catch (RuntimeException e) {
+            log.warn("Redis 기기 세션 캐시 조회 실패 - DB fallback 진행: userId={}, deviceUuid={}", userId, deviceUuid, e);
+        }
+
+        return userSessionRepository.findExpiresAtByUserIdAndDeviceUuid(userId, deviceUuid)
+            .map(expiresAt -> {
+                if (!expiresAt.isAfter(LocalDateTime.now())) {
+                    evictActiveSession(userId, deviceUuid);
+                    return false;
+                }
+
+                cacheActiveSession(userId, deviceUuid, expiresAt);
+                return true;
+            })
+            .orElse(false);
+    }
+
     public void markActiveAfterCommit(Long userId, LocalDateTime expiresAt) {
         runAfterCommit(() -> cacheActiveSession(userId, expiresAt));
+    }
+
+    public void markActiveAfterCommit(Long userId, String deviceUuid, LocalDateTime expiresAt) {
+        runAfterCommit(() -> cacheActiveSession(userId, deviceUuid, expiresAt));
     }
 
     public void refreshAfterCommit(Long userId) {
@@ -55,6 +84,17 @@ public class AuthSessionCacheService {
                 expiresAt -> cacheActiveSession(userId, expiresAt),
                 () -> evictActiveSession(userId)
             ));
+    }
+
+    public void evictDeviceAfterCommit(Long userId, String deviceUuid) {
+        runAfterCommit(() -> evictActiveSession(userId, deviceUuid));
+    }
+
+    public void evictAllAfterCommit(Long userId, List<String> deviceUuids) {
+        runAfterCommit(() -> {
+            evictActiveSession(userId);
+            deviceUuids.forEach(deviceUuid -> evictActiveSession(userId, deviceUuid));
+        });
     }
 
     public void evictAfterCommit(Long userId) {
@@ -75,11 +115,33 @@ public class AuthSessionCacheService {
         }
     }
 
+    private void cacheActiveSession(Long userId, String deviceUuid, LocalDateTime expiresAt) {
+        Duration ttl = Duration.between(LocalDateTime.now(), expiresAt);
+        if (ttl.isNegative() || ttl.isZero()) {
+            evictActiveSession(userId, deviceUuid);
+            return;
+        }
+
+        try {
+            redisTemplate.opsForValue().set(activeSessionKey(userId, deviceUuid), "1", ttl);
+        } catch (RuntimeException e) {
+            log.warn("Redis 기기 세션 캐시 저장 실패: userId={}, deviceUuid={}", userId, deviceUuid, e);
+        }
+    }
+
     private void evictActiveSession(Long userId) {
         try {
             redisTemplate.delete(activeSessionKey(userId));
         } catch (RuntimeException e) {
             log.warn("Redis 세션 캐시 삭제 실패: userId={}", userId, e);
+        }
+    }
+
+    private void evictActiveSession(Long userId, String deviceUuid) {
+        try {
+            redisTemplate.delete(activeSessionKey(userId, deviceUuid));
+        } catch (RuntimeException e) {
+            log.warn("Redis 기기 세션 캐시 삭제 실패: userId={}, deviceUuid={}", userId, deviceUuid, e);
         }
     }
 
@@ -99,5 +161,9 @@ public class AuthSessionCacheService {
 
     private String activeSessionKey(Long userId) {
         return ACTIVE_SESSION_KEY_PREFIX + userId;
+    }
+
+    private String activeSessionKey(Long userId, String deviceUuid) {
+        return ACTIVE_SESSION_KEY_PREFIX + userId + ":" + deviceUuid;
     }
 }

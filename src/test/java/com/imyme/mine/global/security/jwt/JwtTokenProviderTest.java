@@ -25,13 +25,14 @@ class JwtTokenProviderTest {
     }
 
     @Test
-    @DisplayName("Access Token에 role claim을 포함한다")
-    void generateAccessToken_includesRoleClaim() {
-        String token = jwtTokenProvider.generateAccessToken(1L, "USER");
+    @DisplayName("Access Token에 role과 deviceUuid claim을 포함한다")
+    void generateAccessToken_includesRoleAndDeviceUuidClaims() {
+        String token = jwtTokenProvider.generateAccessToken(1L, "USER", "device-1");
 
         assertThat(jwtTokenProvider.validateToken(token)).isTrue();
         assertThat(jwtTokenProvider.getUserIdFromToken(token)).isEqualTo(1L);
         assertThat(jwtTokenProvider.getRoleFromToken(token)).isEqualTo("USER");
+        assertThat(jwtTokenProvider.getDeviceUuidFromToken(token)).isEqualTo("device-1");
     }
 
     @Test
@@ -42,6 +43,7 @@ class JwtTokenProviderTest {
         assertThat(jwtTokenProvider.validateToken(token)).isTrue();
         assertThat(jwtTokenProvider.getUserIdFromToken(token)).isEqualTo(1L);
         assertThat(jwtTokenProvider.getRoleFromToken(token)).isNull();
+        assertThat(jwtTokenProvider.getDeviceUuidFromToken(token)).isNull();
     }
 
     @Test

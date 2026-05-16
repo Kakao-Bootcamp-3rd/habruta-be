@@ -82,7 +82,8 @@ public class TokenRefreshService {
         // 정상 검증 완료 → 새 토큰 발급 (RTR 적용)
         User user = userSession.getUser();
 
-        String newAccessToken = jwtTokenProvider.generateAccessToken(user.getId(), user.getRole().name());
+        String deviceUuid = userSession.getDevice().getDeviceUuid();
+        String newAccessToken = jwtTokenProvider.generateAccessToken(user.getId(), user.getRole().name(), deviceUuid);
         String newRawRefreshToken = jwtTokenProvider.generateRefreshToken(user.getId());
         long expiresIn = jwtProperties.getAccessTokenExpiration() / 1000;
         LocalDateTime newExpiresAt = LocalDateTime.now()
@@ -91,7 +92,7 @@ public class TokenRefreshService {
         // 7새 Refresh Token을 해싱하여 DB 업데이트
         String hashedNewRefreshToken = TokenHasher.hash(newRawRefreshToken);
         userSession.rotateRefreshToken(hashedNewRefreshToken, newExpiresAt);
-        authSessionCacheService.markActiveAfterCommit(user.getId(), newExpiresAt);
+        authSessionCacheService.markActiveAfterCommit(user.getId(), deviceUuid, newExpiresAt);
 
         log.info("Token refreshed successfully for user: {}", user.getId());
 

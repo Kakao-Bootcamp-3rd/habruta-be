@@ -73,11 +73,14 @@ class JwtAuthenticationFilterTest {
         when(jwtTokenProvider.validateToken("access-token")).thenReturn(true);
         when(jwtTokenProvider.getUserIdFromToken("access-token")).thenReturn(1L);
         when(jwtTokenProvider.getRoleFromToken("access-token")).thenReturn("USER");
-        when(authSessionCacheService.hasActiveSession(1L)).thenReturn(true);
+        when(jwtTokenProvider.getDeviceUuidFromToken("access-token")).thenReturn("device-1");
+        when(authSessionCacheService.hasActiveSession(1L, "device-1")).thenReturn(true);
 
         filter.doFilterInternal(request, response, filterChain);
 
         verify(userRepository, never()).findById(1L);
+        verify(authSessionCacheService).hasActiveSession(1L, "device-1");
+        verify(authSessionCacheService, never()).hasActiveSession(1L);
         verify(filterChain).doFilter(request, response);
 
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -95,6 +98,7 @@ class JwtAuthenticationFilterTest {
         when(jwtTokenProvider.validateToken("legacy-token")).thenReturn(true);
         when(jwtTokenProvider.getUserIdFromToken("legacy-token")).thenReturn(1L);
         when(jwtTokenProvider.getRoleFromToken("legacy-token")).thenReturn(null);
+        when(jwtTokenProvider.getDeviceUuidFromToken("legacy-token")).thenReturn(null);
         when(authSessionCacheService.hasActiveSession(1L)).thenReturn(true);
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
         when(user.getId()).thenReturn(1L);

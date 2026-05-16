@@ -32,6 +32,7 @@ public class LogoutService {
         // UserSession만 삭제 (Refresh Token 무효화)
         // Device는 삭제하지 않음 (재로그인 시 재사용)
         userSessionRepository.deleteByUserIdAndDeviceUuid(userId, deviceUuid);
+        authSessionCacheService.evictDeviceAfterCommit(userId, deviceUuid);
         authSessionCacheService.refreshAfterCommit(userId);
 
         log.info("로그아웃 완료 - UserSession 삭제, Device 유지");
