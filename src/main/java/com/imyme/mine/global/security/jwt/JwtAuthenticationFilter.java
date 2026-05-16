@@ -79,23 +79,28 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             if (StringUtils.hasText(token) && trace("jwt.validate-token", request, () -> jwtTokenProvider.validateToken(token))) {
                 // 토큰에서 사용자 ID 추출
                 Long userId = trace("jwt.get-user-id", request, () -> jwtTokenProvider.getUserIdFromToken(token));
+                String role = trace("jwt.get-role", request, () -> jwtTokenProvider.getRoleFromToken(token));
+                String deviceUuid = trace("jwt.get-device-uuid", request, () -> jwtTokenProvider.getDeviceUuidFromToken(token));
 
                 // UserSession 존재 여부 확인을 통한 보안 강화 (로그아웃 여부 체크)
                 // 2.46s 지연 발생
-                if (!trace("jwt.session.exists", request, () -> authSessionCacheService.hasActiveSession(userId))) {
+                if (!trace("jwt.session.exists", request, () -> hasActiveSession(userId, deviceUuid))) {
                     log.warn("Access denied: No active session found for user {}", userId);
                     request.setAttribute("exception", ErrorCode.SESSION_EXPIRED.getCode());
                     filterChain.doFilter(request, response);
                     return true;  // 인증 실패, 다음 필터로 넘어가지 않음
                 }
 
-                // 사용자 조회
-                // TODO: 캐싱 적용 고려 혹은 토큰에 사용자 정보 포함(사용자 늘면) -> 토큰 정보로만 객체 생성 후 DB 조회 없이 인증 처리
-                User user = trace("jwt.user.find", request, () -> userRepository.findById(userId))
-                        .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
-
                 // UserPrincipal 생성
-                UserPrincipal userPrincipal = trace("jwt.user-principal.create", request, () -> UserPrincipal.from(user));
+                UserPrincipal userPrincipal = trace("jwt.user-principal.create", request, () -> {
+                    if (StringUtils.hasText(role)) {
+                        return UserPrincipal.fromClaims(userId, role);
+                    }
+
+                    User user = trace("jwt.user.find", request, () -> userRepository.findById(userId))
+                        .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+                    return UserPrincipal.from(user);
+                });
 
                 // Authentication 객체 생성
                 UsernamePasswordAuthenticationToken authentication = trace(
@@ -123,6 +128,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         return false;
+    }
+
+    private boolean hasActiveSession(Long userId, String deviceUuid) {
+        if (StringUtils.hasText(deviceUuid)) {
+            return authSessionCacheService.hasActiveSession(userId, deviceUuid);
+        }
+
+        return authSessionCacheService.hasActiveSession(userId);
     }
 
     // HTTP 요청의 Authorization 헤더에서 Bearer 토큰 추출

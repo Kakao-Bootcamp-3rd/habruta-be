@@ -20,6 +20,8 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 /**
  * 사용자 관리 서비스
  * - 프로필 조회/수정, 닉네임 검증, 회원 탈퇴 등
@@ -55,8 +57,9 @@ public class UserService {
             throw new BusinessException(ErrorCode.ALREADY_DELETED);
         }
 
+        List<String> deviceUuids = userSessionRepository.findDeviceUuidsByUserId(userId);
         int deletedSessions = userSessionRepository.deleteAllByUserId(userId);
-        authSessionCacheService.evictAfterCommit(userId);
+        authSessionCacheService.evictAllAfterCommit(userId, deviceUuids);
         log.info("삭제된 세션 수: {}", deletedSessions);
 
         deviceRepository.unlinkAllByUserId(userId);

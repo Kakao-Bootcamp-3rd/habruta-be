@@ -38,6 +38,10 @@ public class UserPrincipal implements UserDetails {
         );
     }
 
+    public static UserPrincipal fromClaims(Long userId, String role) {
+        return new UserPrincipal(userId, null, null, role);
+    }
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return List.of(new SimpleGrantedAuthority("ROLE_" + role));

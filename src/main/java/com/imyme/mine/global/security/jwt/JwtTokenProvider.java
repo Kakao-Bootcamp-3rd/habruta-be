@@ -21,6 +21,9 @@ import java.util.Date;
 @RequiredArgsConstructor
 public class JwtTokenProvider {
 
+    private static final String ROLE_CLAIM = "role";
+    private static final String DEVICE_UUID_CLAIM = "deviceUuid";
+
     private final JwtProperties jwtProperties;
 
     // Secret Key 생성 : HMAC-SHA 알고리즘 사용
@@ -30,15 +33,33 @@ public class JwtTokenProvider {
 
     // Access Token 생성
     public String generateAccessToken(Long userId) {
+        return generateAccessToken(userId, null);
+    }
+
+    // Access Token 생성
+    public String generateAccessToken(Long userId, String role) {
+        return generateAccessToken(userId, role, null);
+    }
+
+    // Access Token 생성
+    public String generateAccessToken(Long userId, String role, String deviceUuid) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + jwtProperties.getAccessTokenExpiration());
 
-        return Jwts.builder()
+        JwtBuilder builder = Jwts.builder()
             .subject(String.valueOf(userId))
             .issuedAt(now)
-            .expiration(expiryDate)
-            .signWith(getSigningKey(), Jwts.SIG.HS256)
-            .compact();
+            .expiration(expiryDate);
+
+        if (role != null && !role.isBlank()) {
+            builder.claim(ROLE_CLAIM, role);
+        }
+
+        if (deviceUuid != null && !deviceUuid.isBlank()) {
+            builder.claim(DEVICE_UUID_CLAIM, deviceUuid);
+        }
+
+        return builder.signWith(getSigningKey(), Jwts.SIG.HS256).compact();
     }
 
     // Refresh Token 생성
@@ -56,13 +77,17 @@ public class JwtTokenProvider {
 
     // 토큰에서 사용자 ID 추출
     public Long getUserIdFromToken(String token) {
-        Claims claims = Jwts.parser()
-            .verifyWith(getSigningKey())
-            .build()
-            .parseSignedClaims(token)
-            .getPayload();
+        return Long.valueOf(getClaims(token).getSubject());
+    }
 
-        return Long.valueOf(claims.getSubject());
+    // 토큰에서 사용자 권한 추출
+    public String getRoleFromToken(String token) {
+        return getClaims(token).get(ROLE_CLAIM, String.class);
+    }
+
+    // 토큰에서 기기 UUID 추출
+    public String getDeviceUuidFromToken(String token) {
+        return getClaims(token).get(DEVICE_UUID_CLAIM, String.class);
     }
 
     //  토큰 유효성 검증
@@ -105,24 +130,20 @@ public class JwtTokenProvider {
 
     // 토큰 만료 시간 조회
     public Date getExpirationDateFromToken(String token) {
-        Claims claims = Jwts.parser()
-            .verifyWith(getSigningKey())
-            .build()
-            .parseSignedClaims(token)
-            .getPayload();
-
-        return claims.getExpiration();
+        return getClaims(token).getExpiration();
     }
 
     // 토큰 발급 시간 조회
     public Date getIssuedAtFromToken(String token) {
-        Claims claims = Jwts.parser()
+        return getClaims(token).getIssuedAt();
+    }
+
+    private Claims getClaims(String token) {
+        return Jwts.parser()
             .verifyWith(getSigningKey())
             .build()
             .parseSignedClaims(token)
             .getPayload();
-
-        return claims.getIssuedAt();
     }
 
     // Bearer 토큰에서 실제 토큰 값 추출

@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -42,6 +43,15 @@ public interface UserSessionRepository extends JpaRepository<UserSession, Long> 
 
     @Query("SELECT MAX(s.expiresAt) FROM UserSession s WHERE s.user.id = :userId")
     Optional<LocalDateTime> findMaxExpiresAtByUserId(@Param("userId") Long userId);
+
+    @Query("SELECT s.expiresAt FROM UserSession s WHERE s.user.id = :userId AND s.device.deviceUuid = :deviceUuid")
+    Optional<LocalDateTime> findExpiresAtByUserIdAndDeviceUuid(
+        @Param("userId") Long userId,
+        @Param("deviceUuid") String deviceUuid
+    );
+
+    @Query("SELECT s.device.deviceUuid FROM UserSession s WHERE s.user.id = :userId")
+    List<String> findDeviceUuidsByUserId(@Param("userId") Long userId);
 
     // deviceId로 모든 세션 삭제 (기기 삭제 시)
     @Modifying

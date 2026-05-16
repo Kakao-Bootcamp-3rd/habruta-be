@@ -101,6 +101,7 @@ public class DeviceService {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
         userSessionRepository.deleteAllByDeviceId(device.getId());
+        authSessionCacheService.evictDeviceAfterCommit(userId, deviceUuid);
         authSessionCacheService.refreshAfterCommit(userId);
         deviceRepository.softDeleteByDeviceUuid(deviceUuid);
     }

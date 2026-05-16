@@ -1,0 +1,11 @@
+type: 이유를 해결하기 위해, 실제 변경 행위
+
+예시:
+fix: 로그아웃한 기기에서 API 요청이 성공하는 문제를 해결하기 위해, JWT에 deviceUuid 추가
+perf: 인증 필터의 DB 조회 지연을 줄이기 위해, JWT claim 기반 Principal 생성 적용
+test: 기기 단위 세션 확인 회귀를 막기 위해, 인증 필터 단위 테스트 추가
+
+규칙:
+- type은 feat, fix, perf, refactor, test, docs, chore, ci, build, style, revert 중 하나를 사용한다.
+- 제목은 "왜 하는지"와 "무엇을 했는지"를 함께 적는다.
+- 형식: type: 이유를 ... 위해, 행위
