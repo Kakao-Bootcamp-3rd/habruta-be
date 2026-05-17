@@ -21,6 +21,7 @@ public class AuthSessionCacheService {
 
     private final StringRedisTemplate redisTemplate;
     private final UserSessionRepository userSessionRepository;
+    private final AuthSessionOutboxService authSessionOutboxService;
 
     public boolean hasActiveSession(Long userId) {
         String key = activeSessionKey(userId);
@@ -71,34 +72,32 @@ public class AuthSessionCacheService {
     }
 
     public void markActiveAfterCommit(Long userId, LocalDateTime expiresAt) {
-        runAfterCommit(() -> cacheActiveSession(userId, expiresAt));
+        authSessionOutboxService.enqueueSetUserActive(userId, expiresAt);
     }
 
     public void markActiveAfterCommit(Long userId, String deviceUuid, LocalDateTime expiresAt) {
-        runAfterCommit(() -> cacheActiveSession(userId, deviceUuid, expiresAt));
+        authSessionOutboxService.enqueueSetDeviceActive(userId, deviceUuid, expiresAt);
     }
 
     public void refreshAfterCommit(Long userId) {
         runAfterCommit(() -> userSessionRepository.findMaxExpiresAtByUserId(userId)
             .ifPresentOrElse(
-                expiresAt -> cacheActiveSession(userId, expiresAt),
-                () -> evictActiveSession(userId)
+                expiresAt -> authSessionOutboxService.enqueueSetUserActive(userId, expiresAt),
+                () -> authSessionOutboxService.enqueueDeleteUserActive(userId)
             ));
     }
 
     public void evictDeviceAfterCommit(Long userId, String deviceUuid) {
-        runAfterCommit(() -> evictActiveSession(userId, deviceUuid));
+        authSessionOutboxService.enqueueDeleteDeviceActive(userId, deviceUuid);
     }
 
     public void evictAllAfterCommit(Long userId, List<String> deviceUuids) {
-        runAfterCommit(() -> {
-            evictActiveSession(userId);
-            deviceUuids.forEach(deviceUuid -> evictActiveSession(userId, deviceUuid));
-        });
+        authSessionOutboxService.enqueueDeleteUserActive(userId);
+        deviceUuids.forEach(deviceUuid -> authSessionOutboxService.enqueueDeleteDeviceActive(userId, deviceUuid));
     }
 
     public void evictAfterCommit(Long userId) {
-        runAfterCommit(() -> evictActiveSession(userId));
+        authSessionOutboxService.enqueueDeleteUserActive(userId);
     }
 
     private void cacheActiveSession(Long userId, LocalDateTime expiresAt) {
