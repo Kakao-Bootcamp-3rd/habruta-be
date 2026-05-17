@@ -35,6 +35,7 @@ class AuthSessionCacheServiceTest {
     @Mock StringRedisTemplate redisTemplate;
     @Mock ValueOperations<String, String> valueOperations;
     @Mock UserSessionRepository userSessionRepository;
+    @Mock AuthSessionOutboxService authSessionOutboxService;
 
     @AfterEach
     void tearDown() {
@@ -46,7 +47,7 @@ class AuthSessionCacheServiceTest {
     @Test
     @DisplayName("Redis hit이면 DB 조회 없이 활성 세션으로 판단한다")
     void hasActiveSession_returnsTrueWithoutDatabaseWhenRedisHit() {
-        AuthSessionCacheService service = new AuthSessionCacheService(redisTemplate, userSessionRepository);
+        AuthSessionCacheService service = newService();
         when(redisTemplate.hasKey(CACHE_KEY)).thenReturn(true);
 
         boolean result = service.hasActiveSession(USER_ID);
@@ -58,7 +59,7 @@ class AuthSessionCacheServiceTest {
     @Test
     @DisplayName("Redis miss이면 DB 만료 시각으로 fallback하고 캐시를 다시 채운다")
     void hasActiveSession_fallsBackToDatabaseAndBackfillsCacheWhenRedisMiss() {
-        AuthSessionCacheService service = new AuthSessionCacheService(redisTemplate, userSessionRepository);
+        AuthSessionCacheService service = newService();
         LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(10);
 
         when(redisTemplate.hasKey(CACHE_KEY)).thenReturn(false);
@@ -75,7 +76,7 @@ class AuthSessionCacheServiceTest {
     @Test
     @DisplayName("기기 세션 Redis hit이면 DB 조회 없이 활성 세션으로 판단한다")
     void hasActiveSessionWithDevice_returnsTrueWithoutDatabaseWhenRedisHit() {
-        AuthSessionCacheService service = new AuthSessionCacheService(redisTemplate, userSessionRepository);
+        AuthSessionCacheService service = newService();
         when(redisTemplate.hasKey(DEVICE_CACHE_KEY)).thenReturn(true);
 
         boolean result = service.hasActiveSession(USER_ID, DEVICE_UUID);
@@ -87,7 +88,7 @@ class AuthSessionCacheServiceTest {
     @Test
     @DisplayName("기기 세션 Redis miss이면 userId와 deviceUuid로 DB fallback한다")
     void hasActiveSessionWithDevice_fallsBackToDatabaseAndBackfillsCacheWhenRedisMiss() {
-        AuthSessionCacheService service = new AuthSessionCacheService(redisTemplate, userSessionRepository);
+        AuthSessionCacheService service = newService();
         LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(10);
 
         when(redisTemplate.hasKey(DEVICE_CACHE_KEY)).thenReturn(false);
@@ -105,7 +106,7 @@ class AuthSessionCacheServiceTest {
     @Test
     @DisplayName("DB fallback 결과가 만료된 세션이면 false를 반환하고 캐시를 삭제한다")
     void hasActiveSession_returnsFalseAndEvictsCacheWhenDatabaseSessionExpired() {
-        AuthSessionCacheService service = new AuthSessionCacheService(redisTemplate, userSessionRepository);
+        AuthSessionCacheService service = newService();
         LocalDateTime expiresAt = LocalDateTime.now().minusMinutes(1);
 
         when(redisTemplate.hasKey(CACHE_KEY)).thenReturn(false);
@@ -120,7 +121,7 @@ class AuthSessionCacheServiceTest {
     @Test
     @DisplayName("Redis 조회 실패 시 DB fallback으로 활성 세션을 판단한다")
     void hasActiveSession_fallsBackToDatabaseWhenRedisReadFails() {
-        AuthSessionCacheService service = new AuthSessionCacheService(redisTemplate, userSessionRepository);
+        AuthSessionCacheService service = newService();
         LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(10);
 
         when(redisTemplate.hasKey(CACHE_KEY)).thenThrow(new IllegalStateException("redis down"));
@@ -135,55 +136,45 @@ class AuthSessionCacheServiceTest {
     }
 
     @Test
-    @DisplayName("트랜잭션 중 markActiveAfterCommit 호출 시 커밋 이후 Redis에 저장한다")
-    void markActiveAfterCommit_cachesAfterTransactionCommit() {
-        AuthSessionCacheService service = new AuthSessionCacheService(redisTemplate, userSessionRepository);
+    @DisplayName("markActiveAfterCommit 호출 시 Redis SET outbox 이벤트를 기록한다")
+    void markActiveAfterCommit_enqueuesOutboxEvent() {
+        AuthSessionCacheService service = newService();
         LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(10);
-
-        TransactionSynchronizationManager.initSynchronization();
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
         service.markActiveAfterCommit(USER_ID, expiresAt);
 
-        verify(valueOperations, never()).set(any(), any(), any(Duration.class));
-
-        TransactionSynchronizationUtils.triggerAfterCommit();
-
-        verify(valueOperations).set(eq(CACHE_KEY), eq("1"), any(Duration.class));
+        verify(authSessionOutboxService).enqueueSetUserActive(USER_ID, expiresAt);
     }
 
     @Test
-    @DisplayName("트랜잭션 중 기기 세션 markActiveAfterCommit 호출 시 커밋 이후 Redis에 저장한다")
-    void markActiveAfterCommitWithDevice_cachesAfterTransactionCommit() {
-        AuthSessionCacheService service = new AuthSessionCacheService(redisTemplate, userSessionRepository);
+    @DisplayName("기기 세션 markActiveAfterCommit 호출 시 Redis SET outbox 이벤트를 기록한다")
+    void markActiveAfterCommitWithDevice_enqueuesOutboxEvent() {
+        AuthSessionCacheService service = newService();
         LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(10);
-
-        TransactionSynchronizationManager.initSynchronization();
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
         service.markActiveAfterCommit(USER_ID, DEVICE_UUID, expiresAt);
 
-        verify(valueOperations, never()).set(any(), any(), any(Duration.class));
-
-        TransactionSynchronizationUtils.triggerAfterCommit();
-
-        verify(valueOperations).set(eq(DEVICE_CACHE_KEY), eq("1"), any(Duration.class));
+        verify(authSessionOutboxService).enqueueSetDeviceActive(USER_ID, DEVICE_UUID, expiresAt);
     }
 
     @Test
-    @DisplayName("refreshAfterCommit에서 활성 세션이 없으면 커밋 이후 캐시를 삭제한다")
-    void refreshAfterCommit_evictsAfterTransactionCommitWhenNoActiveSession() {
-        AuthSessionCacheService service = new AuthSessionCacheService(redisTemplate, userSessionRepository);
+    @DisplayName("refreshAfterCommit에서 활성 세션이 없으면 커밋 이후 Redis DELETE outbox 이벤트를 기록한다")
+    void refreshAfterCommit_enqueuesEvictAfterTransactionCommitWhenNoActiveSession() {
+        AuthSessionCacheService service = newService();
 
         TransactionSynchronizationManager.initSynchronization();
         when(userSessionRepository.findMaxExpiresAtByUserId(USER_ID)).thenReturn(Optional.empty());
 
         service.refreshAfterCommit(USER_ID);
 
-        verify(redisTemplate, never()).delete(any(String.class));
+        verify(authSessionOutboxService, never()).enqueueDeleteUserActive(any());
 
         TransactionSynchronizationUtils.triggerAfterCommit();
 
-        verify(redisTemplate).delete(CACHE_KEY);
+        verify(authSessionOutboxService).enqueueDeleteUserActive(USER_ID);
+    }
+
+    private AuthSessionCacheService newService() {
+        return new AuthSessionCacheService(redisTemplate, userSessionRepository, authSessionOutboxService);
     }
 }
