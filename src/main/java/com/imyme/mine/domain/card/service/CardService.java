@@ -13,7 +13,6 @@ import com.imyme.mine.domain.card.entity.CardAttempt;
 import com.imyme.mine.domain.card.repository.CardAttemptRepository;
 import com.imyme.mine.domain.card.repository.CardRepository;
 import com.imyme.mine.domain.category.entity.Category;
-import com.imyme.mine.domain.category.repository.CategoryRepository;
 import com.imyme.mine.domain.keyword.entity.Keyword;
 import com.imyme.mine.domain.keyword.repository.KeywordRepository;
 import com.imyme.mine.domain.notification.entity.NotificationType;
@@ -41,7 +40,6 @@ public class CardService {
     private final CardRepository cardRepository;
     private final CardAttemptRepository cardAttemptRepository;
     private final UserRepository userRepository;
-    private final CategoryRepository categoryRepository;
     private final KeywordRepository keywordRepository;
     private final NotificationCreatorService notificationCreatorService;
     private final TraceSupport traceSupport;
@@ -55,26 +53,16 @@ public class CardService {
             userId, request.categoryId(), request.keywordId());
 
 
-        // query 1
-        if (!traceSupport.trace(
-            "card.create.keyword.exists",
-            () -> keywordRepository.existsByIdAndCategoryId(request.keywordId(), request.categoryId()))) {
-            throw new BusinessException(ErrorCode.KEYWORD_NOT_FOUND);
-        }
+                Keyword keyword = traceSupport.trace(
+            "card.create.keyword.find-with-category",
+            () -> keywordRepository.findByIdAndCategoryIdWithCategory(request.keywordId(), request.categoryId()))
+            .orElseThrow(() -> new BusinessException(ErrorCode.KEYWORD_NOT_FOUND));
 
-        // query 2
-        User user = traceSupport.trace("card.create.user.find", () -> userRepository.findById(userId))
-            .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        // FK 참조용 프록시를 사용한다.
+        User user = traceSupport.trace("card.create.user.reference", () -> userRepository.getReferenceById(userId));
 
-        // query x : FK용 프록시만 만든다.
-        Category category = traceSupport.trace(
-            "card.create.category.reference",
-            () -> categoryRepository.getReferenceById(request.categoryId()));
-
-        // query x : FK용 프록시만 만든다.
-        Keyword keyword = traceSupport.trace(
-            "card.create.keyword.reference",
-            () -> keywordRepository.getReferenceById(request.keywordId()));
+        // query x : keyword 조회 시 JOIN FETCH로 같이 가져온 category를 그대로 사용한다.
+        Category category = keyword.getCategory();
 
         Card card = Card.builder()
             .user(user)
@@ -83,23 +71,27 @@ public class CardService {
             .title(request.title())
             .build();
 
-        // query 3
-        Card savedCard = traceSupport.trace("card.create.card.save", () -> cardRepository.save(card));
+        // query 3 : 카드를 저장소에 저장하는 것 (쓰기 1개)
+        Card savedCard = traceSupport.trace("card.create.card.save", () -> cardRepository.save(card)); // insert
 
 
-        // query 4
-        int prevLevel = user.getLevel();
-        traceSupport.trace("card.create.user.increment-card-count", user::incrementTotalCardCount);
+        UserRepository.CardCountLevelUpdate levelUpdate = traceSupport.trace(
+            "card.create.user.increment-card-count",
+            () -> userRepository.incrementCardCountAndReturnLevel(userId))
+            .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         log.info("카드 생성 완료 - cardId: {}, userId: {}", savedCard.getId(), userId);
 
-        // query 5,6
-        if (user.getLevel() > prevLevel) {
+        // query 5,6 (읽기 1개, 쓰기 1개)
+            // 5 : 알림 수신 설정 조회 select
+            // 6 : 알림 저장 insert
+
+        if (levelUpdate.getNewLevel() > levelUpdate.getOldLevel()) {
             traceSupport.trace("card.create.notification.create", () -> notificationCreatorService.create(
                 userId,
                 NotificationType.LEVEL_UP,
                 "레벨업!",
-                "Lv." + user.getLevel() + " 달성! 계속 성장하고 있어요.",
+                "Lv." + levelUpdate.getNewLevel() + " 달성! 계속 성장하고 있어요.",
                 null,
                 null
             ));
