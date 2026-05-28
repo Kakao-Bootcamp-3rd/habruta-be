@@ -17,6 +17,12 @@ import java.util.Optional;
 @Repository
 public interface UserRepository extends JpaRepository<User, Long> {
 
+    interface CardCountLevelUpdate {
+        Integer getOldLevel();
+
+        Integer getNewLevel();
+    }
+
     // OAuth ID로 회원 조회
     Optional<User> findByOauthId(String oauthId);
 
@@ -61,6 +67,27 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Transactional
     @Query(value = "DELETE FROM users WHERE id IN :ids", nativeQuery = true)
     int hardDeleteByIds(@Param("ids") List<Long> ids);
+
+    @Query(value = """
+        WITH before_update AS (
+            SELECT id, level AS old_level
+            FROM users
+            WHERE id = :userId
+              AND deleted_at IS NULL
+        ),
+        updated_user AS (
+            UPDATE users u
+            SET total_card_count = u.total_card_count + 1,
+                level = CAST(floor((sqrt(1 + 8.0 * (u.total_card_count + 1) / 5.0) - 1) / 2) + 1 AS integer),
+                updated_at = now()
+            FROM before_update b
+            WHERE u.id = b.id
+            RETURNING b.old_level AS "oldLevel", u.level AS "newLevel"
+        )
+        SELECT "oldLevel", "newLevel"
+        FROM updated_user
+        """, nativeQuery = true)
+    Optional<CardCountLevelUpdate> incrementCardCountAndReturnLevel(@Param("userId") Long userId);
 
     /** 탈퇴 회원 S3 키 조회용 Projection */
     interface DeletedUserProjection {
