@@ -10,13 +10,12 @@ import com.imyme.mine.domain.card.dto.CardUpdateRequest;
 import com.imyme.mine.domain.card.dto.CardUpdateResponse;
 import com.imyme.mine.domain.card.entity.Card;
 import com.imyme.mine.domain.card.entity.CardAttempt;
+import com.imyme.mine.domain.card.messaging.CardCreatedStreamPublisher;
 import com.imyme.mine.domain.card.repository.CardAttemptRepository;
 import com.imyme.mine.domain.card.repository.CardRepository;
 import com.imyme.mine.domain.category.entity.Category;
 import com.imyme.mine.domain.keyword.entity.Keyword;
 import com.imyme.mine.domain.keyword.repository.KeywordRepository;
-import com.imyme.mine.domain.notification.entity.NotificationType;
-import com.imyme.mine.domain.notification.service.NotificationCreatorService;
 import com.imyme.mine.global.error.BusinessException;
 import com.imyme.mine.global.error.ErrorCode;
 import com.imyme.mine.global.tracing.TraceSupport;
@@ -41,7 +40,7 @@ public class CardService {
     private final CardAttemptRepository cardAttemptRepository;
     private final UserRepository userRepository;
     private final KeywordRepository keywordRepository;
-    private final NotificationCreatorService notificationCreatorService;
+    private final CardCreatedStreamPublisher cardCreatedStreamPublisher;
     private final TraceSupport traceSupport;
 
     private static final int DEFAULT_LIMIT = 20;
@@ -53,7 +52,7 @@ public class CardService {
             userId, request.categoryId(), request.keywordId());
 
 
-                Keyword keyword = traceSupport.trace(
+        Keyword keyword = traceSupport.trace(
             "card.create.keyword.find-with-category",
             () -> keywordRepository.findByIdAndCategoryIdWithCategory(request.keywordId(), request.categoryId()))
             .orElseThrow(() -> new BusinessException(ErrorCode.KEYWORD_NOT_FOUND));
@@ -74,28 +73,11 @@ public class CardService {
         // query 3 : 카드를 저장소에 저장하는 것 (쓰기 1개)
         Card savedCard = traceSupport.trace("card.create.card.save", () -> cardRepository.save(card)); // insert
 
-
-        UserRepository.CardCountLevelUpdate levelUpdate = traceSupport.trace(
-            "card.create.user.increment-card-count",
-            () -> userRepository.incrementCardCountAndReturnLevel(userId))
-            .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        traceSupport.trace(
+            "card.create.card-created-stream.publish",
+            () -> cardCreatedStreamPublisher.publishAfterCommit(userId, savedCard.getId()));
 
         log.info("카드 생성 완료 - cardId: {}, userId: {}", savedCard.getId(), userId);
-
-        // query 5,6 (읽기 1개, 쓰기 1개)
-            // 5 : 알림 수신 설정 조회 select
-            // 6 : 알림 저장 insert
-
-        if (levelUpdate.getNewLevel() > levelUpdate.getOldLevel()) {
-            traceSupport.trace("card.create.notification.create", () -> notificationCreatorService.create(
-                userId,
-                NotificationType.LEVEL_UP,
-                "레벨업!",
-                "Lv." + levelUpdate.getNewLevel() + " 달성! 계속 성장하고 있어요.",
-                null,
-                null
-            ));
-        }
 
         return CardResponse.from(savedCard);
     }
