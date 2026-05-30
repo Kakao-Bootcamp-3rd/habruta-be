@@ -57,7 +57,7 @@ public class CardCreatedStreamConsumerScheduler {
                 return null;
             });
         } catch (RedisSystemException e) {
-            if (!String.valueOf(e.getMessage()).contains("BUSYGROUP")) {
+            if (!isBusyGroupError(e)) {
                 throw e;
             }
         }
@@ -110,5 +110,16 @@ public class CardCreatedStreamConsumerScheduler {
         } catch (UnknownHostException e) {
             return String.valueOf(System.currentTimeMillis());
         }
+    }
+
+    private boolean isBusyGroupError(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (String.valueOf(current.getMessage()).contains("BUSYGROUP")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 }
