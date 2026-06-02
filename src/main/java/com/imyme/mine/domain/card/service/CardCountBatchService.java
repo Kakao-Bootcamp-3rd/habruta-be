@@ -6,7 +6,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.sql.Array;
 import java.sql.PreparedStatement;
@@ -44,14 +45,16 @@ public class CardCountBatchService {
 
     private final JdbcTemplate jdbcTemplate;
     private final NotificationCreatorService notificationCreatorService;
+    private final PlatformTransactionManager transactionManager;
 
-    @Transactional
     public int applyDeltas(Map<Long, Integer> deltas) {
         if (deltas.isEmpty()) {
             return 0;
         }
 
-        List<LevelUpdateResult> results = updateCardCounts(deltas);
+        List<LevelUpdateResult> results = new TransactionTemplate(transactionManager)
+            .execute(status -> updateCardCounts(deltas));
+
         results.stream()
             .filter(result -> result.newLevel() > result.oldLevel())
             .forEach(result -> notificationCreatorService.create(
