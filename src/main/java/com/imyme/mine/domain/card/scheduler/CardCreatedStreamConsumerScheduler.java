@@ -15,6 +15,7 @@ import org.springframework.data.redis.connection.stream.RecordId;
 import org.springframework.data.redis.connection.stream.StreamOffset;
 import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -64,6 +65,7 @@ public class CardCreatedStreamConsumerScheduler {
     }
 
     @Scheduled(fixedDelay = 500)
+    @SchedulerLock(name = "cardCreatedStreamConsumer", lockAtMostFor = "PT10S", lockAtLeastFor = "PT0S")
     public void consumeCardCreatedEvents() {
         List<MapRecord<String, Object, Object>> records = redisTemplate.opsForStream().read(
             Consumer.from(GROUP_NAME, consumerName),
