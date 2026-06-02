@@ -98,6 +98,10 @@ dependencies {
 
     // Firebase Admin SDK (FCM 푸시 알림)
     implementation 'com.google.firebase:firebase-admin:9.4.2'
+
+    // ShedLock (분산 스케줄러 락)
+    implementation 'net.javacrumbs.shedlock:shedlock-spring:6.9.0'
+    implementation 'net.javacrumbs.shedlock:shedlock-provider-redis-spring:6.9.0'
 }
 
 tasks.named('test') {
